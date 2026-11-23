@@ -155,6 +155,16 @@ section.view{flex:1 1 auto;min-height:0}
 .code-item.filtered .cnt{color:var(--accent);min-width:34px}
 .code-item .edit{opacity:0;border:none;background:transparent;color:var(--ink-soft);padding:2px 4px;border-radius:4px}
 .code-item:hover .edit,.code-item .edit:focus-visible{opacity:1} .code-item .edit:hover{color:var(--accent)}
+.cid{font-family:var(--mono);font-size:11.5px;color:var(--ink-soft);margin-right:6px;font-weight:400}
+.btag{font-size:11px;color:var(--ink-soft);border:1px solid var(--line);border-radius:4px;padding:0 6px;line-height:18px;max-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:none}
+.foot-row{display:flex;gap:8px;position:relative}
+.foot-row .btn{flex:1}
+.dropdown.up{top:auto;bottom:calc(100% + 4px);left:8px;right:8px;min-width:0}
+.frow{display:grid;grid-template-columns:120px minmax(0,1fr);gap:12px}
+.frow.even{grid-template-columns:1fr 1fr}
+.field textarea.sm{min-height:56px}
+.imp-sum{background:var(--panel-2);border-radius:var(--r-sm);padding:12px 16px;margin-bottom:16px;font-size:13px;line-height:1.6}
+.imp-sum b{font-weight:600}
 .grp-label{font-size:12px;color:var(--ink-soft);font-weight:500;padding:16px 12px 4px}
 
 #codePopup{position:fixed;z-index:50;background:var(--panel);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow);width:272px;padding:12px}
@@ -325,7 +335,8 @@ table.matrix tr.total td{font-weight:500;background:none;border-top:1px solid va
           <input class="code-search" id="codeSearch" placeholder="Filter codes…" aria-label="Filter codes">
           <div id="codeList"></div>
         </div>
-        <div class="col-foot"><button class="btn sm" id="addCodeBtn" style="width:100%">+ New code</button></div>
+        <div class="col-foot foot-row"><button class="btn sm" id="addCodeBtn">+ New code</button><button class="btn sm" id="cbIO" title="Import or export the codebook">Import / Export</button>
+          <div class="dropdown up" id="cbMenu" hidden><button data-cb="import">Import codebook…<span class="k">.md .csv</span></button><button data-cb="export">Export codebook…<span class="k">.md .csv</span></button></div></div>
       </aside>
     </div>
   </section>
@@ -349,6 +360,7 @@ table.matrix tr.total td{font-weight:500;background:none;border-top:1px solid va
 <div id="toast" role="status" aria-live="polite"></div>
 <input type="file" id="fileInput" accept=".txt,.md,.text" hidden>
 <input type="file" id="projInput" accept=".json,application/json" hidden>
+<input type="file" id="cbInput" accept=".md,.markdown,.txt,.csv,text/markdown,text/csv,text/plain" hidden>
 
 <script>
 "use strict";
@@ -557,7 +569,8 @@ function rebuild(){
     const p=prev.get(id);if(!content&&p&&p.content)content=p.content;
     return{id,name:d.name||"Untitled document",content,by:d.by||null,at:d.at||0,example:!!d.example};
   }).sort((a,b)=>a.at-b.at);
-  state.codes=Object.entries(v.codes).map(([id,c])=>({id,name:c.name||"Untitled code",color:c.color||PALETTE[0],group:c.group||"",memo:c.memo||"",by:c.by||null,at:c.at||0})).sort((a,b)=>a.at-b.at);
+  state.codes=Object.entries(v.codes).map(([id,c])=>({id,name:c.name||"Untitled code",color:c.color||PALETTE[0],group:c.group||"",memo:c.memo||"",
+    code:c.code||"",include:c.include||"",exclude:c.exclude||"",theme:c.theme||"",source:c.source||"",book:c.book||"",by:c.by||null,at:c.at||0})).sort((a,b)=>a.at-b.at);
   state.quotations=Object.entries(v.quotations).filter(([,q])=>q&&q.docId).map(([id,q])=>({id,docId:q.docId,start:q.start|0,end:q.end|0,text:q.text||"",codeIds:Array.isArray(q.codeIds)?q.codeIds.slice():[],comment:q.comment||"",by:q.by||null,at:q.at||0}));
   state.memos=Object.entries(v.memos).map(([id,m])=>({id,title:m.title||"",content:m.content||"",by:m.by||null,at:m.at||0,updated:m.updated||0})).sort((a,b)=>b.at-a.at);
   if(memoDraft){const m=state.memos.find(x=>x.id===memoDraft.id);if(m){m.title=memoDraft.title;m.content=memoDraft.content;}}
@@ -752,17 +765,17 @@ function openCodePopup(){
   function matches(q){nRecent=0;
     if(!q){if(!rec.length)return pool;nRecent=rec.length;return [...rec.map(id=>pool.find(c=>c.id===id)),...pool.filter(c=>!rec.includes(c.id))];}
     const s=q.toLowerCase();
-    return pool.filter(c=>c.name.toLowerCase().includes(s)||(c.group||"").toLowerCase().includes(s))
-      .sort((a,b)=>(b.name.toLowerCase().startsWith(s))-(a.name.toLowerCase().startsWith(s)));}
+    const starts=c=>c.name.toLowerCase().startsWith(s)||(c.code||"").toLowerCase().startsWith(s);
+    return pool.filter(c=>codeMatches(c,s)).sort((a,b)=>starts(b)-starts(a));}
   function draw(){
     const q=inp.value.trim(),list=matches(q),on=applied();
-    const exact=q&&state.codes.some(c=>c.name.toLowerCase()===q.toLowerCase());
+    const exact=q&&state.codes.some(c=>c.name.toLowerCase()===q.toLowerCase()||(c.code||"").toLowerCase()===q.toLowerCase());
     rows=list.map(c=>({type:"code",c}));if(q&&!exact)rows.push({type:"new",name:q});
     if(!rows.length){listEl.innerHTML=`<div class="muted" style="padding:8px;font-size:12.5px">${pool.length?"":"No codes yet. Type a name to create one."}</div>`;kb=-1;return;}
     if(kb>=rows.length)kb=rows.length-1;if((q||nRecent)&&kb<0)kb=0;
     const label=i=>nRecent&&i===0?'<div class="plabel">Recent</div>':nRecent&&i===nRecent?'<div class="plabel">All codes</div>':"";
     listEl.innerHTML=rows.map((r,i)=>label(i)+(r.type==="code"
-      ?`<div class="pcode${on.includes(r.c.id)?" on":""}${i===kb?" kb":""}" data-i="${i}" role="button" tabindex="-1"><span class="swatch" style="background:${r.c.color}"></span><span class="pname">${esc(r.c.name)}</span><span class="ck">✓</span></div>`
+      ?`<div class="pcode${on.includes(r.c.id)?" on":""}${i===kb?" kb":""}" data-i="${i}" role="button" tabindex="-1"><span class="swatch" style="background:${r.c.color}"></span><span class="pname" title="${esc(codeTip(r.c))}">${codeLabelHTML(r.c)}</span><span class="ck">✓</span></div>`
       :`<div class="pcode pnew${i===kb?" kb":""}" data-i="${i}" role="button" tabindex="-1"><span class="pplus">+</span><span class="pname">Create “${esc(r.name)}”</span></div>`)).join("");
     listEl.querySelectorAll(".pcode").forEach(el=>{el.onclick=()=>pick(+el.getAttribute("data-i"),false);});
     const k=listEl.querySelector(".kb");if(k)k.scrollIntoView({block:"nearest"});
@@ -789,6 +802,13 @@ function openCodePopup(){
 function closeCodePopup(){$("codePopup").hidden=true;pendingSel=null;const s=window.getSelection();if(s)s.removeAllRanges();}
 document.addEventListener("mousedown",e=>{const pop=$("codePopup");if(!pop.hidden&&!pop.contains(e.target)&&!viewerEl.contains(e.target))closeCodePopup();});
 document.addEventListener("keydown",e=>{if(e.key==="Escape"&&!imeBusy(e)){if(!$("codePopup").hidden)closeCodePopup();else if($("modalRoot").innerHTML)closeModal();}});
+/* a code's codebook: the name it was imported under, else the person who created it */
+function bookOf(c){return c.book||(c.by?rawName(c.by):"")}
+function allBooks(){return [...new Set(state.codes.map(bookOf).filter(Boolean))].sort((a,b)=>a.localeCompare(b))}
+function codeLabelHTML(c){return (c.code?`<span class="cid">${esc(c.code)}</span>`:"")+esc(c.name)}
+function codeMatches(c,s){return [c.name,c.code,c.group,bookOf(c)].some(x=>(x||"").toLowerCase().includes(s))}
+function codeTip(c){return [c.memo&&"Definition: "+c.memo,c.include&&"Include: "+c.include,c.exclude&&"Exclude: "+c.exclude].filter(Boolean).join("\n\n")}
+const natCmp=(a,b)=>String(a).localeCompare(String(b),undefined,{numeric:true});
 function createCode(name,color,group,memo){
   const used=state.codes.map(c=>c.color);const col=color||PALETTE.find(p=>!used.includes(p))||PALETTE[state.codes.length%PALETTE.length];
   const c={id:uid("c"),name,color:col,group:group||"",memo:memo||"",by:myBy(),at:Date.now()};put("codes",c);return c;
@@ -845,23 +865,28 @@ function renderCodes(){
   const el=$("codeList");const pool=visibleCodes();$("codeCount").textContent=pool.length;
   const counts={};visibleQuotes().forEach(q=>q.codeIds.forEach(id=>counts[id]=(counts[id]||0)+1));
   let codes=[...pool];
-  if(ui.search){const s=ui.search.toLowerCase();codes=codes.filter(c=>c.name.toLowerCase().includes(s)||(c.group||"").toLowerCase().includes(s));}
+  if(ui.search){const s=ui.search.toLowerCase();codes=codes.filter(c=>codeMatches(c,s));}
   const hidden=state.codes.length-pool.length;
   const sp=scopePerson();const who=sp===me.id?"your":esc(rawName(sp))+"'s";
   const note=sp?`<div class="mine-note">Only ${who} codes and codings are shown${hidden?` (${hidden} other code${hidden>1?"s":""} hidden)`:""}. Switch to <b>All</b> to compare.</div>`:"";
   if(!codes.length){el.innerHTML=note+`<div class="hollow" style="padding:22px 8px;font-size:12.5px">${pool.length?"No codes match.":sp?(sp===me.id?"You haven't":esc(rawName(sp))+" hasn't")+" made or applied any codes yet.":"No codes yet.<br>Select text to create one."}</div>`;return;}
   el.innerHTML=note;
   const groups={};codes.forEach(c=>{(groups[c.group||""]=groups[c.group||""]||[]).push(c);});
-  const keys=Object.keys(groups).sort((a,b)=>a===""?1:b===""?-1:a.localeCompare(b));
+  // groups keep the order they were created or imported in; ungrouped last
+  const first={};codes.forEach(c=>{const g=c.group||"";if(!(g in first)||c.at<first[g])first[g]=c.at;});
+  const keys=Object.keys(groups).sort((a,b)=>a===""?1:b===""?-1:first[a]-first[b]);
+  const showBook=allBooks().length>1;
   keys.forEach(g=>{
     if(keys.length>1||g)el.insertAdjacentHTML("beforeend",`<div class="grp-label">${g?esc(g):"Ungrouped"}</div>`);
-    groups[g].sort((a,b)=>(counts[b.id]||0)-(counts[a.id]||0)||a.name.localeCompare(b.name));
+    // codes with an ID (P1, P2 …) in ID order, then the rest by how often they are used
+    groups[g].sort((a,b)=>a.code&&b.code?natCmp(a.code,b.code):a.code?-1:b.code?1:(counts[b.id]||0)-(counts[a.id]||0)||a.name.localeCompare(b.name));
     groups[g].forEach(c=>{
       const row=document.createElement("div");row.className="code-item"+(ui.codeFilter===c.id?" filtered":"");row.title=c.memo||"";
       const sel=ui.codeFilter===c.id,occ=sel?codeOccurrences(c.id).length:0;
       const cnt=sel&&occ&&ui.codeIdx>=0?`${Math.min(ui.codeIdx,occ-1)+1}/${occ}`:counts[c.id]||0;
-      row.title=(c.memo?c.memo+"\n\n":"")+(sel?"Click again for the next passage":"Click to jump to passages with this code");
-      row.innerHTML=`<span class="swatch" style="background:${c.color}"></span><span class="nm">${esc(c.name)}</span><span class="cnt">${cnt}</span>${sel?'<button class="clr" title="Stop filtering by this code" aria-label="Clear code filter">✕</button>':""}<button class="edit" title="Edit code" aria-label="Edit code">✎</button>`;
+      row.title=(codeTip(c)?codeTip(c)+"\n\n":"")+(sel?"Click again for the next passage":"Click to jump to passages with this code");
+      const bk=showBook&&bookOf(c)?`<span class="btag" title="Codebook: ${esc(bookOf(c))}">${esc(bookOf(c))}</span>`:"";
+      row.innerHTML=`<span class="swatch" style="background:${c.color}"></span><span class="nm">${codeLabelHTML(c)}</span>${bk}<span class="cnt">${cnt}</span>${sel?'<button class="clr" title="Stop filtering by this code" aria-label="Clear code filter">✕</button>':""}<button class="edit" title="Edit code" aria-label="Edit code">✎</button>`;
       row.onclick=()=>jumpToCode(c);
       const clr=row.querySelector(".clr");if(clr)clr.onclick=e=>{e.stopPropagation();ui.codeFilter=null;ui.codeIdx=-1;renderCodes();renderViewer();};
       row.querySelector(".edit").onclick=e=>{e.stopPropagation();editCodeModal(c.id);};
@@ -884,21 +909,124 @@ function jumpToCode(c){
 }
 $("codeSearch").addEventListener("input",e=>{ui.search=e.target.value;renderCodes();});
 $("addCodeBtn").onclick=()=>{if(requireName())editCodeModal(null);};
+
+/* ================= codebook import / export ================= */
+// Reads the team's Markdown codebook (tables under "### group" headings, columns 代號 · 代碼名稱 · 定義 · 納入規則 ·
+// 排除與邊界 · 主題 · 來源) or a CSV with the same columns. Tables without an ID, a name and a definition column are skipped.
+const CB_COLS={code:["代號","代码","code id","codeid","id"],name:["代碼名稱","代码名称","名稱","名称","name","code name"],
+  memo:["定義","定义","說明","说明","definition","description"],include:["納入規則","納入","纳入规则","include","include when","inclusion"],
+  exclude:["排除與邊界","排除","排除与边界","exclude","exclude / boundary","exclusion","boundary"],theme:["主題","主题","theme"],
+  source:["來源","来源","source","v1 來源","v1 来源"],group:["群組","群组","分組","group"],book:["codebook","碼本","码本"],color:["color","colour","顏色"]};
+function cbHeaderMap(cells){const m={};const norm=cells.map(h=>h.replace(/[*`]/g,"").trim().toLowerCase());
+  for(const k in CB_COLS){const i=norm.findIndex(h=>CB_COLS[k].includes(h));if(i>=0)m[k]=i;}return m;}
+function cbClean(v){v=String(v==null?"":v).replace(/\*\*|`/g,"").replace(/<br\s*\/?>/gi,"\n").replace(/\\\|/g,"|").trim();return /^[—–-]$/.test(v)?"":v}
+function cbRowFrom(cells,m,group){const g=k=>m[k]!=null?cbClean(cells[m[k]]):"";
+  const r={code:g("code"),name:g("name"),memo:g("memo"),include:g("include"),exclude:g("exclude"),theme:g("theme"),source:g("source"),group:g("group")||group||"",book:g("book"),color:g("color")};
+  return r.name?r:null;}
+function parseCodebook(text){
+  text=text.replace(/^﻿/,"");const lines=text.split(/\r?\n/);const out=[];
+  if(lines.some(l=>/^\s*\|.*\|\s*$/.test(l))){            // Markdown tables
+    let heading="",m=null;
+    const cellsOf=l=>l.trim().replace(/^\|/,"").replace(/\|$/,"").split(/(?<!\\)\|/).map(x=>x.trim());
+    for(let i=0;i<lines.length;i++){const l=lines[i];
+      const h=l.match(/^#{1,6}\s+(.*)$/);if(h){heading=h[1].replace(/[*`]/g,"").replace(/[（(][^（()）]*[)）]\s*$/,"").trim();m=null;continue;}
+      if(!/^\s*\|/.test(l)){m=null;continue;}
+      const cells=cellsOf(l);
+      if(cells.every(c=>/^:?-{2,}:?$/.test(c)))continue;
+      if(!m){const hm=cbHeaderMap(cells);m=hm.name!=null&&hm.memo!=null?hm:{skip:true};continue;}
+      if(m.skip)continue;const r=cbRowFrom(cells,m,heading);if(r)out.push(r);}
+  }else{                                                   // CSV
+    const rows=[];let row=[],cur="",q=false;
+    for(let i=0;i<text.length;i++){const ch=text[i];
+      if(q){if(ch==='"'){if(text[i+1]==='"'){cur+='"';i++;}else q=false;}else cur+=ch;}
+      else if(ch==='"')q=true;else if(ch===","){row.push(cur);cur="";}else if(ch==="\n"||ch==="\r"){if(ch==="\r"&&text[i+1]==="\n")i++;row.push(cur);rows.push(row);row=[];cur="";}else cur+=ch;}
+    if(cur||row.length){row.push(cur);rows.push(row);}
+    const m=rows.length?cbHeaderMap(rows[0]):{};if(m.name==null)return [];
+    rows.slice(1).forEach(r=>{const x=cbRowFrom(r,m,"");if(x)out.push(x);});
+  }
+  return out;
+}
+function importCodebookModal(rows,filename){
+  if(!rows.length){toast("No codebook table found (needs 代號/代碼名稱/定義 columns)");return;}
+  const fileBooks=[...new Set(rows.map(r=>r.book).filter(Boolean))];
+  const groups=[...new Set(rows.map(r=>r.group).filter(Boolean))];
+  openModal(`<h2>Import codebook</h2><p class="sub">${esc(filename)}</p>
+    <div class="imp-sum">Found <b>${rows.length}</b> codes in <b>${groups.length||1}</b> group${groups.length===1?"":"s"}.<br><span id="i_plan"></span></div>
+    <div class="field"><label for="i_book">Codebook name</label><input type="text" id="i_book" maxlength="60" list="ibooks" value="${esc(fileBooks.length?"":me.name||"")}" placeholder="${fileBooks.length?"Use the Codebook column in the file":"e.g. Battie"}">
+      <datalist id="ibooks">${allBooks().map(b=>`<option value="${esc(b)}">`).join("")}</datalist></div>
+    <p class="muted" style="font-size:12.5px;margin:0">Codes whose ID (or name, if there is no ID) already exists in the same codebook are updated; their colour and codings stay. Everything else is added.</p>
+    <div class="modal-actions"><button class="btn" data-close>Cancel</button><button class="btn primary" id="i_go">Import</button></div>`);
+  const plan=()=>{const inp=$("i_book").value.trim();let add=0,upd=0;
+    rows.forEach(r=>{const bk=inp||r.book||me.name||"";if(findCbMatch(r,bk))upd++;else add++;});
+    $("i_plan").textContent=`${add} new${upd?`, ${upd} updated`:""}.`;return{add,upd};};
+  plan();$("i_book").addEventListener("input",plan);
+  $("i_go").onclick=()=>{if(!requireName())return;const inp=$("i_book").value.trim();const now=Date.now();
+    const gcol={};let gi=0;const used=new Set(state.codes.map(c=>c.color));
+    const colorFor=g=>{if(!(g in gcol)){gcol[g]=PALETTE.find(p=>!used.has(p))||PALETTE[(gi)%PALETTE.length];used.add(gcol[g]);gi++;}return gcol[g];};
+    let add=0,upd=0;
+    rows.forEach((r,i)=>{const book=inp||r.book||me.name||"";const ex=findCbMatch(r,book);
+      const f={name:r.name,code:r.code,memo:r.memo,include:r.include,exclude:r.exclude,theme:r.theme,source:r.source,group:r.group,book};
+      if(ex){put("codes",{...ex,...f});upd++;}
+      else{put("codes",{id:uid("c"),...f,color:/^#[0-9a-f]{6}$/i.test(r.color)?r.color:colorFor(r.group),by:myBy(),at:now+i});add++;}});
+    closeModal();toast(`Imported ${add+upd} codes${inp?` into “${inp}”`:""}`);};
+}
+function findCbMatch(r,book){return state.codes.find(c=>bookOf(c)===book&&(r.code?c.code===r.code:!c.code&&c.name===r.name))}
+function exportCodebookModal(){
+  const books=allBooks();
+  openModal(`<h2>Export codebook</h2><p class="sub">Same table layout as the team's Markdown codebook, so it can be imported again.</p>
+    <div class="frow even"><div class="field"><label for="e_book">Codebook</label><select id="e_book"><option value="">All codes (${state.codes.length})</option>${books.map(b=>`<option value="${esc(b)}">${esc(b)} (${state.codes.filter(c=>bookOf(c)===b).length})</option>`).join("")}</select></div>
+      <div class="field"><label for="e_fmt">Format</label><select id="e_fmt"><option value="md">Markdown (.md)</option><option value="csv">CSV (.csv, for Excel)</option></select></div></div>
+    <div class="modal-actions"><button class="btn" data-close>Cancel</button><button class="btn primary" id="e_go">Download</button></div>`);
+  $("e_go").onclick=()=>{const b=$("e_book").value,fmt=$("e_fmt").value;exportCodebook(b,fmt);closeModal();};
+}
+function exportCodebook(book,fmt){
+  const codes=state.codes.filter(c=>!book||bookOf(c)===book);
+  const first={};codes.forEach(c=>{const g=c.group||"";if(!(g in first)||c.at<first[g])first[g]=c.at;});
+  const groups=Object.keys(first).sort((a,b)=>a===""?1:b===""?-1:first[a]-first[b]);
+  const segs=c=>state.quotations.filter(q=>q.codeIds.includes(c.id));
+  const sorted=g=>codes.filter(c=>(c.group||"")===g).sort((a,b)=>a.code&&b.code?natCmp(a.code,b.code):a.code?-1:b.code?1:a.at-b.at);
+  const title=(state.name||"Codebook")+(book?"｜"+book:"");const fname=safeName(title)+"_codebook";
+  const head=["代號","代碼名稱","定義","納入規則","排除與邊界","主題","來源","段數","文件數","Codebook"];
+  const vals=c=>{const q=segs(c);return [c.code,c.name,c.memo,c.include,c.exclude,c.theme,c.source,q.length,new Set(q.map(x=>x.docId)).size,bookOf(c)];};
+  if(fmt==="csv"){const rows=[["群組",...head,"color"]];groups.forEach(g=>sorted(g).forEach(c=>rows.push([g,...vals(c),c.color])));
+    downloadText("﻿"+rows.map(r=>r.map(v=>`"${String(v==null?"":v).replace(/"/g,'""')}"`).join(",")).join("\r\n"),fname+".csv");return;}
+  const cell=v=>String(v==null||v===""?"—":v).replace(/\|/g,"\\|").replace(/\r?\n/g,"<br>");
+  const today=new Date().toISOString().slice(0,10);
+  let md=`# ${title}｜碼本\n\n- 匯出日期：${today}\n- 代碼數：${codes.length}${book?"":`（${allBooks().length} 個 codebook）`}\n- 「段數」為所有編碼者套用此代碼的段落數；「文件數」為出現此代碼的文件數。\n`;
+  groups.forEach(g=>{md+=`\n### ${g||"未分組"}\n\n| ${head.join(" | ")} |\n|${head.map(()=>"---").join("|")}|\n`;
+    sorted(g).forEach(c=>{md+=`| ${vals(c).map(cell).join(" | ")} |\n`;});});
+  downloadText(md,fname+".md");
+}
+const cbMenu=$("cbMenu");
+$("cbIO").onclick=e=>{e.stopPropagation();cbMenu.hidden=!cbMenu.hidden;};
+document.addEventListener("click",e=>{if(!cbMenu.contains(e.target)&&e.target!==$("cbIO"))cbMenu.hidden=true;});
+cbMenu.querySelectorAll("button").forEach(b=>b.onclick=()=>{cbMenu.hidden=true;
+  if(b.getAttribute("data-cb")==="import"){if(requireName())$("cbInput").click();}else exportCodebookModal();});
+$("cbInput").onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();
+  r.onload=()=>{let rows=[];try{rows=parseCodebook(String(r.result));}catch(err){rows=[];}importCodebookModal(rows,f.name);};
+  r.readAsText(f);e.target.value="";};
 function editCodeModal(id){
-  const c=id?codeById(id):{name:"",color:PALETTE.find(p=>!state.codes.map(x=>x.color).includes(p))||PALETTE[0],group:"",memo:""};
+  const c=id?codeById(id):{name:"",color:PALETTE.find(p=>!state.codes.map(x=>x.color).includes(p))||PALETTE[0],group:"",memo:"",code:"",include:"",exclude:"",theme:"",source:"",book:""};
   const isNew=!id;const uses=id?state.quotations.filter(q=>q.codeIds.includes(id)):[];
   const groups=[...new Set(state.codes.map(x=>x.group).filter(Boolean))];
   openModal(`<h2>${isNew?"New code":"Edit code"}</h2><p class="sub">${isNew?"Create a label to apply to text.":uses.length+" quotation(s) use this code."}${mode==="shared"?" The codebook is shared by everyone on this project.":""}</p>
-    <div class="field"><label for="c_name">Name</label><input type="text" id="c_name" maxlength="120" value="${esc(c.name)}" placeholder="Code name"></div>
+    <div class="frow"><div class="field"><label for="c_code">Code ID</label><input type="text" id="c_code" maxlength="20" value="${esc(c.code||"")}" placeholder="e.g. P1"></div>
+      <div class="field"><label for="c_name">Name</label><input type="text" id="c_name" maxlength="120" value="${esc(c.name)}" placeholder="Code name"></div></div>
     <div class="field"><label>Colour</label><div class="palette" id="c_pal">${PALETTE.map(p=>`<button class="p${p===c.color?" on":""}" data-c="${p}" style="background:${p}" aria-label="Colour ${p}"></button>`).join("")}</div></div>
-    <div class="field"><label for="c_group">Group (optional)</label><input type="text" id="c_group" maxlength="80" value="${esc(c.group||"")}" placeholder="e.g. Tension" list="grouplist"><datalist id="grouplist">${groups.map(g=>`<option value="${esc(g)}">`).join("")}</datalist></div>
-    <div class="field"><label for="c_memo">Definition</label><textarea id="c_memo" maxlength="5000" placeholder="What does this code mean? When should it be applied?">${esc(c.memo||"")}</textarea></div>
+    <div class="frow even"><div class="field"><label for="c_group">Group</label><input type="text" id="c_group" maxlength="80" value="${esc(c.group||"")}" placeholder="e.g. P｜接案路徑" list="grouplist"><datalist id="grouplist">${groups.map(g=>`<option value="${esc(g)}">`).join("")}</datalist></div>
+      <div class="field"><label for="c_book">Codebook</label><input type="text" id="c_book" maxlength="60" value="${esc(c.book||"")}" placeholder="${esc(isNew?(me.name||"Your name"):bookOf(c)||"")}" list="booklist"><datalist id="booklist">${allBooks().map(b=>`<option value="${esc(b)}">`).join("")}</datalist></div></div>
+    <div class="field"><label for="c_memo">Definition</label><textarea id="c_memo" maxlength="5000" placeholder="What does this code mean?">${esc(c.memo||"")}</textarea></div>
+    <div class="frow even"><div class="field"><label for="c_inc">Include when</label><textarea class="sm" id="c_inc" maxlength="3000">${esc(c.include||"")}</textarea></div>
+      <div class="field"><label for="c_exc">Exclude / boundary</label><textarea class="sm" id="c_exc" maxlength="3000">${esc(c.exclude||"")}</textarea></div></div>
+    <div class="frow even"><div class="field"><label for="c_theme">Theme</label><input type="text" id="c_theme" maxlength="80" value="${esc(c.theme||"")}" placeholder="e.g. T3"></div>
+      <div class="field"><label for="c_src">Source</label><input type="text" id="c_src" maxlength="200" value="${esc(c.source||"")}" placeholder="e.g. v1 P3, R6"></div></div>
     <div class="modal-actions">${isNew?"":'<button class="btn ghost left" id="c_del" style="color:var(--danger)">Delete code</button>'}<button class="btn" data-close>Cancel</button><button class="btn primary" id="c_save">${isNew?"Create":"Save"}</button></div>`);
   let chosen=c.color;
   document.querySelectorAll("#c_pal .p").forEach(p=>p.onclick=()=>{chosen=p.getAttribute("data-c");document.querySelectorAll("#c_pal .p").forEach(x=>x.classList.toggle("on",x===p));});
   $("c_save").onclick=()=>{const name=$("c_name").value.trim();if(!name){toast("Give the code a name");return;}
-    const group=$("c_group").value.trim(),memo=$("c_memo").value;
-    if(isNew)createCode(name,chosen,group,memo);else put("codes",{...c,name,color:chosen,group,memo});closeModal();toast(isNew?"Code created":"Code saved");};
+    const f={name,color:chosen,group:$("c_group").value.trim(),memo:$("c_memo").value,code:$("c_code").value.trim(),include:$("c_inc").value,exclude:$("c_exc").value,
+      theme:$("c_theme").value.trim(),source:$("c_src").value.trim(),book:$("c_book").value.trim()};
+    if(isNew)put("codes",{id:uid("c"),...f,by:myBy(),at:Date.now()});else put("codes",{...c,...f});closeModal();toast(isNew?"Code created":"Code saved");};
   const delB=$("c_del");
   if(delB)delB.onclick=()=>{const others=mode==="shared"?uses.filter(q=>q.by&&q.by!==me.id).length:0;
     confirmModal("Delete code?",`“${esc(c.name)}” will be removed from ${uses.length} quotation(s)${others?`, ${others} of them by other coders`:""}. Quotations left with no codes are deleted too.`,"Delete",()=>{
