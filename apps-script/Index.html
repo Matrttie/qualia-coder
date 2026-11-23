@@ -125,6 +125,8 @@ section.view{flex:1 1 auto;min-height:0}
 .scope{display:flex;gap:2px;background:var(--panel-2);padding:2px;border-radius:7px}
 .scope button{border:none;background:transparent;padding:2px 9px;border-radius:5px;font-size:11.5px;font-weight:600;color:var(--ink-soft)}
 .scope button[aria-pressed="true"]{background:var(--panel);color:var(--ink);box-shadow:var(--shadow)}
+.scope select{border:none;background:transparent;padding:2px 4px;border-radius:5px;font-size:11.5px;font-weight:600;color:var(--ink-soft);max-width:92px;cursor:pointer}
+.scope select.on{background:var(--panel);color:var(--ink);box-shadow:var(--shadow)}
 .mine-note{font-size:11.5px;color:var(--ink-soft);background:var(--accent-soft);border-radius:var(--r-sm);padding:6px 9px;margin-bottom:8px}
 .code-search{width:100%;border:1px solid var(--line);background:var(--paper);border-radius:var(--r-sm);padding:7px 10px;margin-bottom:8px}
 .code-search:focus{outline:none;border-color:var(--accent)}
@@ -285,6 +287,7 @@ table.matrix tr.total td{font-weight:700;background:var(--panel-2)}
           <div class="scope" id="cbScope" role="group" aria-label="Whose codes to show" hidden>
             <button type="button" data-scope="all" aria-pressed="true" title="Show everyone's codes and codings">All</button>
             <button type="button" data-scope="mine" aria-pressed="false" title="Show only the codes and codings you made">Mine</button>
+            <select id="cbPerson" aria-label="Show one person's codes" title="Show only one person's codes and codings"></select>
           </div>
           <span class="count" id="codeCount">0</span></div>
         <div class="col-body">
@@ -350,8 +353,12 @@ function qText(q){const d=docById(q.docId);return d&&d.content&&q.end<=d.content
 // "Mine only" lens: hides teammates' codings and codes so you can code without being influenced (shared projects only)
 function mineOnly(){return mode==="shared"&&ui.mine&&!!me.id}
 function setMineOnly(on){ui.mine=!!on;lsSet(KEY+"_mine",ui.mine?"1":"0");renderAll();}
-function myCodeIds(){const s=new Set(state.codes.filter(c=>c.by&&c.by===me.id).map(c=>c.id));state.quotations.forEach(q=>{if(q.by===me.id)q.codeIds.forEach(id=>s.add(id));});return s}
-function visibleCodes(){if(!mineOnly())return state.codes;const mine=myCodeIds();return state.codes.filter(c=>mine.has(c.id))}
+// codes a person created or applied
+function codeIdsOf(u){const s=new Set(state.codes.filter(c=>c.by&&c.by===u).map(c=>c.id));state.quotations.forEach(q=>{if(q.by===u)q.codeIds.forEach(id=>s.add(id));});return s}
+function myCodeIds(){return codeIdsOf(me.id)}
+// whose codes the codebook lists: the Mine lens, else the person picked in the codebook or the viewer's Coder menu
+function scopePerson(){return mineOnly()?me.id:(mode==="shared"&&ui.coder!=="all"?ui.coder:null)}
+function visibleCodes(){const u=scopePerson();if(!u)return state.codes;const ids=codeIdsOf(u);return state.codes.filter(c=>ids.has(c.id))}
 function visibleQuotes(){if(mineOnly())return state.quotations.filter(q=>q.by===me.id);return ui.coder==="all"?state.quotations:state.quotations.filter(q=>q.by===ui.coder)}
 function quotesOfDoc(id){return visibleQuotes().filter(q=>q.docId===id)}
 function canModifyQ(q){return mode!=="shared"||!q.by||q.by===me.id}
@@ -702,11 +709,21 @@ function toggleCodeOnPending(codeId,forceOn){
 
 /* ================= codebook ================= */
 function renderScope(){
-  const box=$("cbScope");box.hidden=mode!=="shared"||!me.id;
-  const on=mineOnly();box.querySelectorAll("button").forEach(b=>b.setAttribute("aria-pressed",String((b.getAttribute("data-scope")==="mine")===on)));
+  const box=$("cbScope");box.hidden=mode!=="shared"||!me.id;if(box.hidden)return;
+  const u=scopePerson();const cur=mineOnly()?"mine":u&&u!==me.id?"person":u?"mine":"all";
+  box.querySelectorAll("button").forEach(b=>b.setAttribute("aria-pressed",String(b.getAttribute("data-scope")===cur)));
+  const others=coderIds().filter(id=>id!==me.id).sort((a,b)=>rawName(a).localeCompare(rawName(b)));
+  const sel=$("cbPerson");sel.hidden=!others.length;
+  const html=`<option value="">Person…</option>`+others.map(id=>`<option value="${esc(id)}">${esc(rawName(id))}</option>`).join("");
+  if(sel.innerHTML!==html)sel.innerHTML=html;sel.value=cur==="person"?u:"";sel.classList.toggle("on",cur==="person");
 }
-$("cbScope").querySelectorAll("button").forEach(b=>b.onclick=()=>{const on=b.getAttribute("data-scope")==="mine";if(on===mineOnly())return;setMineOnly(on);
-  toast(on?"Showing only your codes and codings":"Showing everyone's codes and codings");});
+function setScope(scope,person){
+  if(scope==="mine"){if(!mineOnly())setMineOnly(true);toast("Showing only your codes and codings");return;}
+  ui.mine=false;lsSet(KEY+"_mine","0");ui.coder=scope==="person"&&person?person:"all";renderAll();
+  toast(scope==="person"?"Showing only "+rawName(person)+"'s codes and codings":"Showing everyone's codes and codings");
+}
+$("cbScope").querySelectorAll("button").forEach(b=>b.onclick=()=>setScope(b.getAttribute("data-scope")));
+$("cbPerson").addEventListener("change",e=>{if(e.target.value)setScope("person",e.target.value);else setScope("all");});
 function renderCodes(){
   renderScope();
   const el=$("codeList");const pool=visibleCodes();$("codeCount").textContent=pool.length;
@@ -714,8 +731,9 @@ function renderCodes(){
   let codes=[...pool];
   if(ui.search){const s=ui.search.toLowerCase();codes=codes.filter(c=>c.name.toLowerCase().includes(s)||(c.group||"").toLowerCase().includes(s));}
   const hidden=state.codes.length-pool.length;
-  const note=mineOnly()?`<div class="mine-note">Only your codes and codings are shown${hidden?` (${hidden} teammate code${hidden>1?"s":""} hidden)`:""}. Switch to <b>All</b> to compare.</div>`:"";
-  if(!codes.length){el.innerHTML=note+`<div class="hollow" style="padding:22px 8px;font-size:12.5px">${pool.length?"No codes match.":mineOnly()?"You haven't made or applied any codes yet.<br>Select text to create one.":"No codes yet.<br>Select text to create one."}</div>`;return;}
+  const sp=scopePerson();const who=sp===me.id?"your":esc(rawName(sp))+"'s";
+  const note=sp?`<div class="mine-note">Only ${who} codes and codings are shown${hidden?` (${hidden} other code${hidden>1?"s":""} hidden)`:""}. Switch to <b>All</b> to compare.</div>`:"";
+  if(!codes.length){el.innerHTML=note+`<div class="hollow" style="padding:22px 8px;font-size:12.5px">${pool.length?"No codes match.":sp?(sp===me.id?"You haven't":esc(rawName(sp))+" hasn't")+" made or applied any codes yet.":"No codes yet.<br>Select text to create one."}</div>`;return;}
   el.innerHTML=note;
   const groups={};codes.forEach(c=>{(groups[c.group||""]=groups[c.group||""]||[]).push(c);});
   const keys=Object.keys(groups).sort((a,b)=>a===""?1:b===""?-1:a.localeCompare(b));
