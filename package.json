@@ -1,0 +1,12 @@
+{
+  "name": "qualia-coder",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Collaborative qualitative coding for small research teams, on GitHub Pages + Google Apps Script.",
+  "license": "MIT",
+  "scripts": {
+    "test": "node tests/backend.test.js",
+    "build": "node scripts/build-pages.js"
+  },
+  "engines": { "node": ">=18" }
+}
