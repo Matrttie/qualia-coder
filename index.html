@@ -1020,17 +1020,42 @@ function editCodeModal(id){
       <div class="field"><label for="c_exc">Exclude / boundary</label><textarea class="sm" id="c_exc" maxlength="3000">${esc(c.exclude||"")}</textarea></div></div>
     <div class="frow even"><div class="field"><label for="c_theme">Theme</label><input type="text" id="c_theme" maxlength="80" value="${esc(c.theme||"")}" placeholder="e.g. T3"></div>
       <div class="field"><label for="c_src">Source</label><input type="text" id="c_src" maxlength="200" value="${esc(c.source||"")}" placeholder="e.g. v1 P3, R6"></div></div>
-    <div class="modal-actions">${isNew?"":'<button class="btn ghost left" id="c_del" style="color:var(--danger)">Delete code</button>'}<button class="btn" data-close>Cancel</button><button class="btn primary" id="c_save">${isNew?"Create":"Save"}</button></div>`);
+    <div class="modal-actions">${isNew?"":'<button class="btn ghost" id="c_del" style="color:var(--danger)">Delete code</button><button class="btn ghost" id="c_merge" style="margin-right:auto">Merge into…</button>'}<button class="btn" data-close>Cancel</button><button class="btn primary" id="c_save">${isNew?"Create":"Save"}</button></div>`);
   let chosen=c.color;
   document.querySelectorAll("#c_pal .p").forEach(p=>p.onclick=()=>{chosen=p.getAttribute("data-c");document.querySelectorAll("#c_pal .p").forEach(x=>x.classList.toggle("on",x===p));});
   $("c_save").onclick=()=>{const name=$("c_name").value.trim();if(!name){toast("Give the code a name");return;}
     const f={name,color:chosen,group:$("c_group").value.trim(),memo:$("c_memo").value,code:$("c_code").value.trim(),include:$("c_inc").value,exclude:$("c_exc").value,
       theme:$("c_theme").value.trim(),source:$("c_src").value.trim(),book:$("c_book").value.trim()};
     if(isNew)put("codes",{id:uid("c"),...f,by:myBy(),at:Date.now()});else put("codes",{...c,...f});closeModal();toast(isNew?"Code created":"Code saved");};
+  const mB=$("c_merge");if(mB)mB.onclick=()=>mergeCodeModal(id);
   const delB=$("c_del");
   if(delB)delB.onclick=()=>{const others=mode==="shared"?uses.filter(q=>q.by&&q.by!==me.id).length:0;
     confirmModal("Delete code?",`“${esc(c.name)}” will be removed from ${uses.length} quotation(s)${others?`, ${others} of them by other coders`:""}. Quotations left with no codes are deleted too.`,"Delete",()=>{
       uses.forEach(q=>{const ids=q.codeIds.filter(x=>x!==id);if(ids.length)put("quotations",{...q,codeIds:ids});else del("quotations",q.id);});del("codes",id);closeModal();toast("Code deleted");});};
+}
+
+/* merge: move every coding of one code onto another, keep a note of it in the target's Source, then delete the old code */
+function mergeCodeModal(id){
+  const src=codeById(id);if(!src)return;
+  const others=state.codes.filter(c=>c.id!==id);if(!others.length){toast("There is no other code to merge into");return;}
+  const books=[...new Set(others.map(bookOf))];
+  const opt=c=>`<option value="${c.id}">${esc((c.code?c.code+" ":"")+c.name)}</option>`;
+  const byBook=b=>others.filter(c=>bookOf(c)===b).sort((a,c)=>a.code&&c.code?natCmp(a.code,c.code):a.name.localeCompare(c.name));
+  const label=c=>(c.code?c.code+" ":"")+c.name;
+  openModal(`<h2>Merge “${esc(label(src))}”</h2><p class="sub">Every passage coded with it moves to the code you pick, then this code is removed. Use it when two codebooks have the same idea under different names.</p>
+    <div class="field"><label for="m_to">Merge into</label><select id="m_to">${books.length>1?books.map(b=>`<optgroup label="${esc(b||"No codebook")}">${byBook(b).map(opt).join("")}</optgroup>`).join(""):byBook(books[0]).map(opt).join("")}</select></div>
+    <div class="imp-sum" id="m_sum"></div>
+    <div class="modal-actions"><button class="btn" data-close>Cancel</button><button class="btn primary" id="m_go">Merge</button></div>`);
+  const uses=state.quotations.filter(q=>q.codeIds.includes(id));
+  const sum=()=>{const to=$("m_to").value;const both=uses.filter(q=>q.codeIds.includes(to)).length;const others=mode==="shared"?uses.filter(q=>q.by&&q.by!==me.id).length:0;
+    $("m_sum").innerHTML=`<b>${uses.length}</b> passage${uses.length===1?"":"s"} will move to “${esc(label(codeById(to)))}”${both?`, ${both} of them already have it`:""}.${others?` ${others} were coded by other people.`:""}<br>“${esc(label(src))}” will be noted in its Source, then deleted.`;};
+  sum();$("m_to").onchange=sum;
+  $("m_go").onclick=()=>{const to=$("m_to").value,t=codeById(to);if(!t)return;
+    uses.forEach(q=>{const ids=q.codeIds.filter(x=>x!==id);if(!ids.includes(to))ids.push(to);put("quotations",{...q,codeIds:ids});});
+    const note="merged: "+[bookOf(src),label(src)].filter(Boolean).join(" ");
+    put("codes",{...t,source:[t.source,note].filter(Boolean).join("；")});
+    del("codes",id);if(ui.codeFilter===id)ui.codeFilter=null;
+    closeModal();toast(`Merged into “${label(t)}” · ${uses.length} passage${uses.length===1?"":"s"} moved`);};
 }
 
 /* ================= quotation inspector ================= */
