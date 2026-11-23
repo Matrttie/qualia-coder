@@ -26,6 +26,7 @@ Qualia Coder covers that core workflow. Coworkers open one link in a browser, ty
 - **Code transcripts.** Select any passage to tag it with one or more codes, then add comments and memos.
 - **Codebook.** Codes have colours, groups and written definitions, and the whole team shares one codebook.
 - **Real-time-ish collaboration.** Every edit syncs to the team within about 4 seconds, and each quotation records who coded it.
+- **Code on your own.** Switch the codebook to **Mine** to hide teammates' codes and highlights while you do your own thematic analysis. Switch back to **All** to compare.
 - **Coder comparison.** See code use by coder, and pairwise **inter-coder agreement**: character-overlap per code, ready for a calibration meeting.
 - **Analysis.** Code frequency, a code × document matrix and code co-occurrence.
 - **Export.** Download the whole project as JSON, or the quotations as CSV (with a coder column) for R, SPSS or Excel.
