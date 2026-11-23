@@ -23,7 +23,8 @@ Qualia Coder covers that core workflow. Coworkers open one link in a browser, ty
 
 ## Features
 
-- **Code transcripts.** Select any passage, type a few characters to find a code (or create a new one) and press Enter. Add comments and memos.
+- **Code transcripts.** Select any passage, type a few characters to find a code (or create a new one) and press Enter. Your recently used codes are listed first, and ⌘Z / Ctrl+Z undoes the last coding. Add comments and memos.
+- **Track progress.** Tick documents off as you finish them (each coder has their own ticks). A reload brings you back to the same document and scroll position.
 - **Codebook.** Codes have colours, groups and written definitions, and the whole team shares one codebook. Click a code to jump to its passages; click again for the next one, across documents.
 - **Real-time-ish collaboration.** Every edit syncs to the team within about 4 seconds, and each quotation records who coded it.
 - **Code on your own.** Switch the codebook to **Mine** to hide teammates' codes and highlights while you do your own thematic analysis, or pick one person to see only their codes. Switch back to **All** to compare.

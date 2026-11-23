@@ -105,6 +105,10 @@ section.view{flex:1 1 auto;min-height:0}
 .doc-item .qn{font-family:var(--mono);font-size:12px;color:var(--ink-soft);font-variant-numeric:tabular-nums}
 .doc-item.active .qn{color:var(--accent)}
 .doc-item .x{opacity:0;border:none;background:transparent;color:var(--ink-soft);padding:2px 4px;border-radius:4px;flex:none}
+.doc-item .dn{width:16px;height:16px;flex:none;border:1px solid var(--line-strong);border-radius:4px;background:transparent;padding:0;display:grid;place-items:center;font-size:10px;line-height:1;color:transparent;transition:border-color .15s,background-color .15s,color .15s}
+.doc-item .dn:hover{border-color:var(--accent);color:var(--accent)}
+.doc-item.done .dn{background:var(--accent);border-color:var(--accent);color:#fff}
+.doc-item.done .nm{color:var(--ink-soft);text-decoration:line-through;text-decoration-color:var(--line-strong)}
 .doc-item:hover .x,.doc-item .x:focus-visible{opacity:1} .doc-item .x:hover{color:var(--danger);background:var(--panel)}
 
 .viewer-wrap{background:var(--paper)}
@@ -249,6 +253,10 @@ table.matrix tr.total td{font-weight:500;background:none;border-top:1px solid va
 #toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(8px);background:var(--ink);color:var(--panel);
   padding:8px 16px;border-radius:10px;font-weight:500;font-size:13px;box-shadow:var(--shadow);opacity:0;pointer-events:none;transition:opacity .2s cubic-bezier(.2,.8,.2,1),transform .2s cubic-bezier(.2,.8,.2,1);z-index:80;max-width:calc(100% - 32px);text-align:center}
 #toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+#toast.act{pointer-events:auto;display:flex;align-items:center;gap:12px}
+#toast .tact{border:none;background:transparent;color:inherit;font-weight:600;padding:2px 6px;margin:-2px -6px -2px 0;border-radius:6px;text-decoration:underline;text-underline-offset:3px}
+#toast .tact:hover{background:color-mix(in srgb,var(--panel) 16%,transparent)}
+#codePopup .plabel{font-size:11px;color:var(--ink-soft);padding:6px 8px 2px}
 .muted{color:var(--ink-soft)}
 .hollow{text-align:center;color:var(--ink-soft);padding:40px 20px}
 
@@ -303,7 +311,7 @@ table.matrix tr.total td{font-weight:500;background:none;border-top:1px solid va
           <button type="button" class="ov-chip" id="ovChip" hidden title="Passages coded by more than one person. Click to jump to the next one."></button>
           <span class="hint" id="viewerHint">Select text to code it</span>
         </div>
-        <div class="viewer-scroll"><div id="viewer"></div></div>
+        <div class="viewer-scroll" id="viewerScroll"><div id="viewer"></div></div>
       </div>
       <aside class="col codes">
         <div class="col-head"><h3>Codebook</h3>
@@ -411,7 +419,7 @@ function askName(first){
     const existing=first?Object.keys(people).find(id=>id!==me.id&&(people[id].name||"").trim().toLowerCase()===v.toLowerCase()):null;
     if(existing){me.id=existing;me.name=people[existing].name;lsSet(ME_KEY,JSON.stringify(me));closeModal(true);renderAll();toast("Welcome back, "+me.name);return;}
     if(!me.id)me.id=uid("u");me.name=v;lsSet(ME_KEY,JSON.stringify(me));
-    people[me.id]={name:v};queueWrite("people/"+me.id,{name:v,at:Date.now()});
+    people[me.id]={...(people[me.id]||{done:[]}),name:v};queueWrite("people/"+me.id,{name:v,done:myDone(),at:Date.now()});
     closeModal(true);renderAll();toast("Coding as "+v);};
   $("n_save").onclick=go;$("n_name").addEventListener("keydown",e=>{if(e.key==="Enter"&&!imeBusy(e))go();});
 }
@@ -540,8 +548,8 @@ function askPasscode(){
 function rebuild(){
   const v={};for(const k in raw)v[k]={...raw[k]};
   pendingW.forEach((b,p)=>{const i=p.indexOf("/");const c=p.slice(0,i),id=p.slice(i+1);if(!v[c])return;if(b===DEL)delete v[c][id];else v[c][id]=b;});
-  people={};Object.entries(v.people).forEach(([id,p])=>{people[id]={name:(p&&p.name)||""};});
-  if(me.id&&me.name)people[me.id]={name:me.name};
+  people={};Object.entries(v.people).forEach(([id,p])=>{people[id]={name:(p&&p.name)||"",done:Array.isArray(p&&p.done)?p.done:[]};});
+  if(me.id&&me.name)people[me.id]={...(people[me.id]||{done:[]}),name:me.name};
   const prev=new Map(state.documents.map(d=>[d.id,d]));
   const texts={};Object.values(v.doctext).forEach(t=>{if(t&&t.docId)(texts[t.docId]=texts[t.docId]||[]).push(t);});
   state.documents=Object.entries(v.documents).map(([id,d])=>{
@@ -563,13 +571,26 @@ function scheduleRender(){if(rq)return;rq=true;
   const run=()=>{if(!rq)return;rq=false;if(ui.dragging){ui.renderAfterDrag=true;return;}renderAll();};
   requestAnimationFrame(run);setTimeout(run,150);}   // timer fallback: frames pause in background tabs
 function loaded(){return mode==="local"||(mode==="shared"&&firstSynced)}
+/* remember where you were (tab, document, memo, scroll per document) so a reload returns there */
+const VIEW_KEY=KEY+"_view";
+function readView(){try{return JSON.parse(lsGet(VIEW_KEY)||"{}")||{}}catch(e){return{}}}
+function saveView(){if(!loaded()||ui.wantDoc)return;const v=readView();
+  lsSet(VIEW_KEY,JSON.stringify({...v,view:ui.view,doc:ui.currentDoc,memo:ui.memoId,scroll:v.scroll||{}}));}
+function saveScroll(){const d=ui.currentDoc;if(!d||ui.wantDoc)return;const v=readView();v.scroll=v.scroll||{};
+  v.scroll[d]=Math.round($("viewerScroll").scrollTop);const ks=Object.keys(v.scroll);if(ks.length>50)delete v.scroll[ks[0]];lsSet(VIEW_KEY,JSON.stringify(v));}
+function restoreScroll(id){const v=readView();$("viewerScroll").scrollTop=(v.scroll&&v.scroll[id])||0;}
+function setView(view){ui.view=view;document.querySelectorAll(".tab").forEach(x=>x.setAttribute("aria-selected",String(x.getAttribute("data-view")===view)));
+  ["code","analyze","memos"].forEach(v=>$("view-"+v).hidden=(v!==view));}
 function renderAll(){
+  if(ui.wantDoc&&loaded()){const want=ui.wantDoc;if(docById(want)){ui.currentDoc=want;ui.wantDoc=null;
+      requestAnimationFrame(()=>restoreScroll(want));}else if(!docById(want))ui.wantDoc=null;}
   if(!docById(ui.currentDoc))ui.currentDoc=state.documents[0]?state.documents[0].id:null;
   if(ui.codeFilter&&!visibleCodes().some(c=>c.id===ui.codeFilter))ui.codeFilter=null;
   const pn=$("projName");if(document.activeElement!==pn)pn.value=state.name;
   renderStatus();renderPeople();renderCoderSelect();renderDocs();renderViewer();renderCodes();
   if(ui.view==="analyze")renderAnalyze();
   if(ui.view==="memos")renderMemos();
+  saveView();
 }
 function setStatus(s){status=s;renderStatus();}
 function renderStatus(){
@@ -600,14 +621,23 @@ function renderCoderSelect(){
 $("coderSel").addEventListener("change",e=>{ui.coder=e.target.value;renderAll();});
 
 /* ================= documents ================= */
+/* "done" marks are personal: each coder ticks off the documents they have finished.
+   Shared: stored on your own people/ record (only you write it). This browser only: localStorage. */
+function myDone(){if(mode==="shared")return (people[me.id]&&people[me.id].done)||[];try{return JSON.parse(lsGet(KEY+"_done")||"[]")}catch(e){return[]}}
+function toggleDone(id){const cur=myDone();const next=cur.includes(id)?cur.filter(x=>x!==id):[...cur,id];
+  if(mode==="shared"){if(!requireName())return;people[me.id]={...(people[me.id]||{}),name:me.name,done:next};queueWrite("people/"+me.id,{name:me.name,done:next,at:Date.now()});}
+  else lsSet(KEY+"_done",JSON.stringify(next));
+  renderDocs();}
 function renderDocs(){
   const el=$("docList");$("docCount").textContent=state.documents.length;
   if(!state.documents.length){el.innerHTML=`<div class="hollow" style="padding:24px 8px;font-size:12.5px">${loaded()?"No documents yet.<br>Add an interview, transcript or field note.":"Loading…"}</div>`;return;}
   el.innerHTML="";
   state.documents.forEach(d=>{
-    const row=document.createElement("div");row.className="doc-item"+(d.id===ui.currentDoc?" active":"");
-    row.innerHTML=`<span class="nm" title="${esc(d.name)}">${esc(d.name)}</span><span class="qn">${quotesOfDoc(d.id).length}</span>${canDeleteDoc(d)?'<button class="x" title="Delete document" aria-label="Delete document">✕</button>':""}`;
-    row.onclick=()=>{ui.currentDoc=d.id;renderDocs();renderViewer();};
+    const done=myDone().includes(d.id);
+    const row=document.createElement("div");row.className="doc-item"+(d.id===ui.currentDoc?" active":"")+(done?" done":"");
+    row.innerHTML=`<button class="dn" title="${done?"Mark as not done":"Mark as done"}" aria-label="${done?"Mark as not done":"Mark as done"}" aria-pressed="${done}">✓</button><span class="nm" title="${esc(d.name)}">${esc(d.name)}</span><span class="qn">${quotesOfDoc(d.id).length}</span>${canDeleteDoc(d)?'<button class="x" title="Delete document" aria-label="Delete document">✕</button>':""}`;
+    row.onclick=()=>{ui.currentDoc=d.id;renderDocs();renderViewer();restoreScroll(d.id);saveView();};
+    row.querySelector(".dn").onclick=e=>{e.stopPropagation();toggleDone(d.id);};
     const x=row.querySelector(".x");if(x)x.onclick=e=>{e.stopPropagation();deleteDoc(d.id);};
     el.appendChild(row);
   });
@@ -714,11 +744,14 @@ function openCodePopup(){
   pop.innerHTML=`<div class="ph">Apply codes <button class="btn ghost sm" data-popclose style="margin-left:auto;padding:2px 8px">Done</button></div>
     <div class="pquote">${esc(pendingSel.text.slice(0,120))}${pendingSel.text.length>120?"…":""}</div>
     <input id="codeQuery" class="pquery" maxlength="120" placeholder="Search or create a code" aria-label="Search or create a code" autocomplete="off">
-    <div class="plist" id="plist"></div><div class="phint">↑↓ to choose · Enter to apply · Esc to close</div>`;
+    <div class="plist" id="plist"></div><div class="phint">↑↓ to choose · Enter to apply · ⌘Z to undo</div>`;
   pop.hidden=false;
   const inp=$("codeQuery"),listEl=$("plist");let kb=-1,rows=[];
   // search: name or group contains the query; names starting with it come first
-  function matches(q){if(!q)return pool;const s=q.toLowerCase();
+  const rec=recentCodes().filter(id=>pool.some(c=>c.id===id)).slice(0,5);let nRecent=0;
+  function matches(q){nRecent=0;
+    if(!q){if(!rec.length)return pool;nRecent=rec.length;return [...rec.map(id=>pool.find(c=>c.id===id)),...pool.filter(c=>!rec.includes(c.id))];}
+    const s=q.toLowerCase();
     return pool.filter(c=>c.name.toLowerCase().includes(s)||(c.group||"").toLowerCase().includes(s))
       .sort((a,b)=>(b.name.toLowerCase().startsWith(s))-(a.name.toLowerCase().startsWith(s)));}
   function draw(){
@@ -726,25 +759,27 @@ function openCodePopup(){
     const exact=q&&state.codes.some(c=>c.name.toLowerCase()===q.toLowerCase());
     rows=list.map(c=>({type:"code",c}));if(q&&!exact)rows.push({type:"new",name:q});
     if(!rows.length){listEl.innerHTML=`<div class="muted" style="padding:8px;font-size:12.5px">${pool.length?"":"No codes yet. Type a name to create one."}</div>`;kb=-1;return;}
-    if(kb>=rows.length)kb=rows.length-1;if(q&&kb<0)kb=0;
-    listEl.innerHTML=rows.map((r,i)=>r.type==="code"
+    if(kb>=rows.length)kb=rows.length-1;if((q||nRecent)&&kb<0)kb=0;
+    const label=i=>nRecent&&i===0?'<div class="plabel">Recent</div>':nRecent&&i===nRecent?'<div class="plabel">All codes</div>':"";
+    listEl.innerHTML=rows.map((r,i)=>label(i)+(r.type==="code"
       ?`<div class="pcode${on.includes(r.c.id)?" on":""}${i===kb?" kb":""}" data-i="${i}" role="button" tabindex="-1"><span class="swatch" style="background:${r.c.color}"></span><span class="pname">${esc(r.c.name)}</span><span class="ck">✓</span></div>`
-      :`<div class="pcode pnew${i===kb?" kb":""}" data-i="${i}" role="button" tabindex="-1"><span class="pplus">+</span><span class="pname">Create “${esc(r.name)}”</span></div>`).join("");
+      :`<div class="pcode pnew${i===kb?" kb":""}" data-i="${i}" role="button" tabindex="-1"><span class="pplus">+</span><span class="pname">Create “${esc(r.name)}”</span></div>`)).join("");
     listEl.querySelectorAll(".pcode").forEach(el=>{el.onclick=()=>pick(+el.getAttribute("data-i"),false);});
     const k=listEl.querySelector(".kb");if(k)k.scrollIntoView({block:"nearest"});
   }
   // mouse click on an existing code toggles it and keeps the popup open (several codes per passage);
   // Enter applies the highlighted code, or creates the new one, and closes the popup
   function pick(i,viaKey){const r=rows[i];if(!r)return;
-    if(r.type==="new"){const c=createCode(r.name);toggleCodeOnPending(c.id,true);closeCodePopup();toast("Coded as “"+r.name+"”");return;}
-    if(viaKey){toggleCodeOnPending(r.c.id,true);closeCodePopup();toast("Coded as “"+r.c.name+"”");return;}
+    const undo={label:"Undo",fn:undoLast};
+    if(r.type==="new"){const c=createCode(r.name);toggleCodeOnPending(c.id,true);if(lastUndo)lastUndo.newCode=c.id;closeCodePopup();toast("Coded as “"+r.name+"”",undo);return;}
+    if(viaKey){toggleCodeOnPending(r.c.id,true);closeCodePopup();toast("Coded as “"+r.c.name+"”",undo);return;}
     toggleCodeOnPending(r.c.id);draw();}
   draw();
   const w=pop.offsetWidth,h=pop.offsetHeight;let x=lastXY.x+6,y=lastXY.y+8;
   if(x+w>innerWidth-10)x=innerWidth-w-10;if(x<10)x=10;if(y+h>innerHeight-10)y=lastXY.y-h-8;if(y<10)y=10;
   pop.style.left=x+"px";pop.style.top=y+"px";
   pop.querySelector("[data-popclose]").onclick=closeCodePopup;
-  inp.addEventListener("input",()=>{kb=inp.value.trim()?0:-1;draw();});
+  inp.addEventListener("input",()=>{kb=inp.value.trim()||rec.length?0:-1;draw();});
   inp.addEventListener("keydown",e=>{if(imeBusy(e))return;
     if(e.key==="ArrowDown"||e.key==="ArrowUp"){e.preventDefault();if(!rows.length)return;kb=e.key==="ArrowDown"?(kb+1)%rows.length:(kb<=0?rows.length-1:kb-1);draw();}
     else if(e.key==="Enter"){e.preventDefault();if(kb>=0)pick(kb,true);}
@@ -758,6 +793,19 @@ function createCode(name,color,group,memo){
   const used=state.codes.map(c=>c.color);const col=color||PALETTE.find(p=>!used.includes(p))||PALETTE[state.codes.length%PALETTE.length];
   const c={id:uid("c"),name,color:col,group:group||"",memo:memo||"",by:myBy(),at:Date.now()};put("codes",c);return c;
 }
+/* codes I used most recently on this device, newest first (popup shows them on top) */
+function recentCodes(){try{const a=JSON.parse(lsGet(KEY+"_recent")||"[]");return Array.isArray(a)?a:[]}catch(e){return[]}}
+function pushRecent(id){lsSet(KEY+"_recent",JSON.stringify([id,...recentCodes().filter(x=>x!==id)].slice(0,20)));}
+/* undo the last coding change (toast button or Cmd/Ctrl+Z) */
+let lastUndo=null;
+function undoLast(){const u=lastUndo;if(!u)return;lastUndo=null;
+  if(u.prev)put("quotations",u.prev);else if(state.quotations.some(x=>x.id===u.qid))del("quotations",u.qid);
+  if(u.newCode&&!state.quotations.some(q=>q.codeIds.includes(u.newCode)))del("codes",u.newCode);
+  closeCodePopup();toast("Undone");}
+document.addEventListener("keydown",e=>{
+  if(!(e.metaKey||e.ctrlKey)||e.shiftKey||e.altKey||e.key.toLowerCase()!=="z"||!lastUndo)return;
+  const t=e.target;if(t&&(t.tagName==="INPUT"||t.tagName==="TEXTAREA"||t.isContentEditable))return;
+  e.preventDefault();undoLast();});
 function toggleCodeOnPending(codeId,forceOn){
   if(!pendingSel)return;
   let q=pendingQuote();
@@ -765,8 +813,11 @@ function toggleCodeOnPending(codeId,forceOn){
   q=q?{...q,codeIds:q.codeIds.slice()}:{id:uid("q"),docId:pendingSel.docId,start:pendingSel.start,end:pendingSel.end,text:pendingSel.text.slice(0,5000),codeIds:[],comment:"",by:myBy(),at:Date.now()};
   if(!canModifyQ(q)){toast("That quotation belongs to another coder");return;}
   pendingSel.qid=q.id;
+  const before=state.quotations.find(x=>x.id===q.id);
   const has=q.codeIds.includes(codeId);
-  if(has&&!forceOn)q.codeIds=q.codeIds.filter(x=>x!==codeId);else if(!has)q.codeIds.push(codeId);
+  if(has&&!forceOn)q.codeIds=q.codeIds.filter(x=>x!==codeId);else if(!has){q.codeIds.push(codeId);pushRecent(codeId);}
+  if(has&&forceOn)return;
+  lastUndo={qid:q.id,prev:before?{...before,codeIds:before.codeIds.slice()}:null,newCode:null};
   if(q.codeIds.length)put("quotations",q);else if(state.quotations.some(x=>x.id===q.id))del("quotations",q.id);
   const now=(pendingQuote()||{codeIds:[]}).codeIds;
   $("codePopup").querySelectorAll(".pcode[data-id]").forEach(el=>el.classList.toggle("on",now.includes(el.getAttribute("data-id"))));
@@ -968,7 +1019,7 @@ $("addMemoBtn").onclick=()=>{if(!requireName())return;flushMemo();const now=Date
 document.querySelectorAll(".tab").forEach(t=>t.onclick=()=>{
   if(ui.view==="memos")flushMemo();ui.view=t.getAttribute("data-view");
   document.querySelectorAll(".tab").forEach(x=>x.setAttribute("aria-selected",String(x===t)));
-  ["code","analyze","memos"].forEach(v=>$("view-"+v).hidden=(v!==ui.view));closeCodePopup();renderAll();
+  ["code","analyze","memos"].forEach(v=>$("view-"+v).hidden=(v!==ui.view));closeCodePopup();renderAll();saveView();
 });
 
 /* ================= project menu ================= */
@@ -1073,7 +1124,9 @@ function closeModal(force){if(ui.modalLocked&&!force)return;ui.modalLocked=false
 function confirmModal(title,msg,label,onYes,danger=true){
   openModal(`<h2>${title}</h2><p class="sub" style="margin-bottom:20px">${msg}</p><div class="modal-actions"><button class="btn" data-close>Cancel</button><button class="btn ${danger?"danger":"primary"}" id="cfm">${label}</button></div>`);
   $("cfm").onclick=()=>onYes();}
-let toastT;function toast(msg){const t=$("toast");t.textContent=msg;t.classList.add("show");clearTimeout(toastT);toastT=setTimeout(()=>t.classList.remove("show"),2400);}
+let toastT;function toast(msg,action){const t=$("toast");t.textContent=msg;t.classList.toggle("act",!!action);
+  if(action){const b=document.createElement("button");b.className="tact";b.textContent=action.label;b.onclick=()=>{t.classList.remove("show");action.fn();};t.appendChild(b);}
+  t.classList.add("show");clearTimeout(toastT);toastT=setTimeout(()=>t.classList.remove("show"),action?5000:2400);}
 
 /* ================= boot ================= */
 function startLocal(){mode="local";status="local";const s=loadLocal();
@@ -1081,6 +1134,9 @@ function startLocal(){mode="local";status="local";const s=loadLocal();
   if(!s)saveLocal();renderAll();}
 function boot(){
   const t=lsGet(KEY+"_theme");if(t)document.documentElement.setAttribute("data-theme",t);
+  const sv=readView();if(["code","analyze","memos"].includes(sv.view))setView(sv.view);
+  if(sv.doc)ui.wantDoc=sv.doc;if(sv.memo)ui.memoId=sv.memo;
+  let st;$("viewerScroll").addEventListener("scroll",()=>{clearTimeout(st);st=setTimeout(saveScroll,250);},{passive:true});
   if(!SHARED){startLocal();return;}
   mode="shared";state=emptyProject();state.name="Shared project";loadMe();if(me.id&&me.name)people[me.id]={name:me.name};
   setStatus("connecting");renderAll();syncNow();
