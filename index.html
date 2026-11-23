@@ -1,0 +1,963 @@
+<!DOCTYPE html>
+<html>
+<head>
+<base target="_top">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Qualia Coder</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap">
+<style>
+/* Layout concept: scholarly three-pane workspace (sources · text · codebook) with analysis + memo views; ink-on-paper neutrals, single teal accent, categorical code colors carry meaning */
+:root{
+  --paper:#f7f5f0; --panel:#ffffff; --panel-2:#f0ede6; --ink:#1f2328; --ink-soft:#5a6069;
+  --line:#dcd7cc; --line-strong:#c3bcae; --accent:#117a74; --accent-soft:#d6ebe9;
+  --danger:#b4453a; --warn:#a8741a; --good:#2f7d46; --shadow:0 1px 2px rgba(31,35,40,.06),0 8px 24px rgba(31,35,40,.08);
+  --r:10px; --r-sm:7px;
+  --font:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang TC","Microsoft JhengHei",system-ui,sans-serif;
+  --display:"Space Grotesk",Inter,-apple-system,"Segoe UI","PingFang TC","Microsoft JhengHei",system-ui,sans-serif;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --paper:#15171a; --panel:#1d2024; --panel-2:#23272c; --ink:#e7e4dd; --ink-soft:#9aa0a8;
+  --line:#31363c; --line-strong:#434a52; --accent:#4bc4ba; --accent-soft:#143c3a;
+  --danger:#e07a6f; --warn:#d9ab54; --good:#6cc487; --shadow:0 1px 2px rgba(0,0,0,.3),0 10px 28px rgba(0,0,0,.4);
+  color-scheme:dark;
+}}
+:root[data-theme="dark"]{
+  --paper:#15171a; --panel:#1d2024; --panel-2:#23272c; --ink:#e7e4dd; --ink-soft:#9aa0a8;
+  --line:#31363c; --line-strong:#434a52; --accent:#4bc4ba; --accent-soft:#143c3a;
+  --danger:#e07a6f; --warn:#d9ab54; --good:#6cc487; --shadow:0 1px 2px rgba(0,0,0,.3),0 10px 28px rgba(0,0,0,.4);
+  color-scheme:dark;
+}
+
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--paper);color:var(--ink);font-family:var(--font);font-size:14px;line-height:1.5;
+  display:flex;flex-direction:column;-webkit-font-smoothing:antialiased}
+[hidden]{display:none!important}
+button{font-family:inherit;font-size:inherit;color:inherit;cursor:pointer}
+button:focus-visible,select:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+input,textarea,select{font-family:inherit;font-size:inherit;color:inherit}
+h1,h2,h3{font-family:var(--display);margin:0;text-wrap:balance}
+::selection{background:var(--accent-soft)}
+
+.topbar{position:sticky;top:0;z-index:30;background:var(--panel);border-bottom:1px solid var(--line);
+  display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:9px 16px}
+.brand{display:flex;align-items:center;gap:9px;font-family:var(--display);font-weight:700;font-size:16px;letter-spacing:-.01em;line-height:1.1}
+.brand .glyph{width:24px;height:24px;border-radius:6px;background:var(--accent);color:var(--panel);display:grid;place-items:center;font-size:13px;flex:none}
+.brand small{font-family:var(--font);font-weight:500;color:var(--ink-soft);font-size:11px;letter-spacing:.02em}
+.proj-name{background:transparent;border:1px solid transparent;border-radius:var(--r-sm);padding:4px 8px;font-weight:600;max-width:200px;min-width:0}
+.proj-name:hover{border-color:var(--line)} .proj-name:focus{outline:none;border-color:var(--accent);background:var(--panel-2)}
+.tabs{display:flex;gap:2px;background:var(--panel-2);padding:3px;border-radius:9px}
+.tab{border:none;background:transparent;padding:6px 14px;border-radius:7px;font-weight:600;color:var(--ink-soft)}
+.tab[aria-selected="true"]{background:var(--panel);color:var(--ink);box-shadow:var(--shadow)}
+.spacer{flex:1 1 auto}
+.status{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--line);background:var(--panel);border-radius:20px;
+  padding:4px 11px 4px 9px;font-size:12px;font-weight:600;color:var(--ink-soft);white-space:nowrap}
+.status:hover{border-color:var(--accent)}
+.status .led{width:8px;height:8px;border-radius:50%;background:var(--line-strong);flex:none}
+.status[data-s="live"] .led{background:var(--good);box-shadow:0 0 0 3px color-mix(in srgb,var(--good) 22%,transparent)}
+.status[data-s="connecting"] .led,.status[data-s="local"] .led{background:var(--warn)}
+.status[data-s="offline"] .led,.status[data-s="locked"] .led{background:var(--danger)}
+.people{display:flex;align-items:center;border:none;background:transparent;padding:0}
+.ini{width:26px;height:26px;border-radius:50%;display:inline-grid;place-items:center;color:#fff;font-size:11px;font-weight:700;
+  border:2px solid var(--panel);margin-left:-7px;flex:none;letter-spacing:0}
+.people .ini:first-child{margin-left:0}
+.people .more{font-size:11px;font-weight:700;color:var(--ink-soft);margin-left:5px}
+.ini.sm{width:18px;height:18px;font-size:9px;border:none;margin:0}
+.menu{position:relative}
+.btn{border:1px solid var(--line-strong);background:var(--panel);border-radius:var(--r-sm);padding:6px 12px;font-weight:600;display:inline-flex;align-items:center;gap:6px}
+.btn:hover{border-color:var(--accent);color:var(--accent)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--panel)}
+.btn.primary:hover{filter:brightness(1.07);color:var(--panel)}
+.btn.ghost{border-color:transparent;background:transparent;color:var(--ink-soft)}
+.btn.ghost:hover{background:var(--panel-2);color:var(--ink)}
+.btn.sm{padding:3px 9px;font-size:12.5px}
+.btn.danger{background:var(--danger);border-color:var(--danger);color:var(--panel)}
+.btn.danger:hover{filter:brightness(1.07);color:var(--panel)}
+.dropdown{position:absolute;right:0;top:calc(100% + 6px);background:var(--panel);border:1px solid var(--line);
+  border-radius:var(--r);box-shadow:var(--shadow);min-width:250px;padding:6px;z-index:40}
+.dropdown button{display:flex;width:100%;align-items:center;gap:9px;border:none;background:transparent;padding:8px 10px;border-radius:var(--r-sm);text-align:left}
+.dropdown button:hover{background:var(--panel-2)}
+.dropdown button.del{color:var(--danger)}
+.dropdown hr{border:none;border-top:1px solid var(--line);margin:5px 2px}
+.dropdown .k{margin-left:auto;color:var(--ink-soft);font-size:11px}
+
+main{flex:1 1 auto;min-height:0;display:flex;flex-direction:column}
+section.view{flex:1 1 auto;min-height:0}
+
+.workspace{display:grid;grid-template-columns:230px minmax(0,1fr) 290px;height:100%;min-height:0}
+.col{min-height:0;min-width:0;display:flex;flex-direction:column;background:var(--panel)}
+.col.docs{border-right:1px solid var(--line)}
+.col.codes{border-left:1px solid var(--line)}
+.col-head{display:flex;align-items:center;gap:8px;padding:11px 14px;border-bottom:1px solid var(--line);flex:none}
+.col-head h3{font-size:12px;letter-spacing:.07em;text-transform:uppercase;color:var(--ink-soft);font-family:var(--font);font-weight:700}
+.col-head .count{margin-left:auto;font-size:11px;color:var(--ink-soft);background:var(--panel-2);padding:1px 7px;border-radius:20px;font-weight:600}
+.col-body{flex:1 1 auto;overflow:auto;padding:8px}
+.col-foot{flex:none;padding:8px;border-top:1px solid var(--line)}
+
+.doc-item{display:flex;align-items:center;gap:8px;padding:9px 10px;border-radius:var(--r-sm);cursor:pointer;margin-bottom:2px}
+.doc-item:hover{background:var(--panel-2)}
+.doc-item.active{background:var(--accent-soft)}
+.doc-item .nm{font-weight:600;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.doc-item .qn{font-size:11px;color:var(--ink-soft);font-weight:600;font-variant-numeric:tabular-nums}
+.doc-item.active .qn{color:var(--accent)}
+.doc-item .x{opacity:0;border:none;background:transparent;color:var(--ink-soft);padding:2px 4px;border-radius:5px;flex:none}
+.doc-item:hover .x,.doc-item .x:focus-visible{opacity:1} .doc-item .x:hover{color:var(--danger);background:var(--panel)}
+
+.viewer-wrap{background:var(--paper)}
+.viewer-head{padding:9px 20px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px;flex:none;background:var(--panel);flex-wrap:wrap}
+.viewer-head .doc-title{font-family:var(--display);font-weight:600;font-size:15px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.viewer-head .hint{margin-left:auto;font-size:12px;color:var(--ink-soft)}
+.coder-sel{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--ink-soft);font-weight:600}
+.coder-sel select{border:1px solid var(--line);background:var(--paper);border-radius:var(--r-sm);padding:4px 8px;font-weight:600;font-size:12.5px}
+.viewer-scroll{flex:1 1 auto;overflow:auto;padding:26px 20px 60px}
+#viewer{max-width:68ch;margin:0 auto;white-space:pre-wrap;overflow-wrap:break-word;font-size:15.5px;line-height:1.72;color:var(--ink)}
+#viewer mark.hl{background:color-mix(in srgb,var(--c) 26%,transparent);color:inherit;border-radius:3px;
+  padding:.5px 0;cursor:pointer;box-shadow:inset 0 -2px 0 color-mix(in srgb,var(--c) 85%,transparent)}
+#viewer mark.hl:hover{background:color-mix(in srgb,var(--c) 42%,transparent)}
+#viewer mark.hl.multi{box-shadow:inset 0 -2px 0 var(--c),inset 0 -5px 0 color-mix(in srgb,var(--c) 35%,transparent)}
+.empty{max-width:44ch;margin:10vh auto 0;text-align:center;color:var(--ink-soft);white-space:normal}
+.empty h2{font-size:17px;color:var(--ink);margin-bottom:8px}
+.empty p{margin:0 0 18px}
+.empty .acts{display:flex;flex-direction:column;gap:9px;align-items:center}
+
+.code-search{width:100%;border:1px solid var(--line);background:var(--paper);border-radius:var(--r-sm);padding:7px 10px;margin-bottom:8px}
+.code-search:focus{outline:none;border-color:var(--accent)}
+.code-item{display:flex;align-items:center;gap:9px;padding:8px 9px;border-radius:var(--r-sm);cursor:pointer;margin-bottom:1px}
+.code-item:hover{background:var(--panel-2)}
+.code-item.filtered{background:var(--accent-soft)}
+.swatch{width:13px;height:13px;border-radius:4px;flex:none;box-shadow:inset 0 0 0 1px rgba(0,0,0,.12);display:inline-block}
+.code-item .nm{font-weight:600;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.code-item .cnt{font-size:11px;color:var(--ink-soft);font-weight:700;min-width:20px;text-align:right;font-variant-numeric:tabular-nums}
+.code-item .edit{opacity:0;border:none;background:transparent;color:var(--ink-soft);padding:2px;border-radius:4px}
+.code-item:hover .edit,.code-item .edit:focus-visible{opacity:1} .code-item .edit:hover{color:var(--accent)}
+.grp-label{font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-soft);font-weight:700;padding:10px 9px 4px}
+
+#codePopup{position:fixed;z-index:50;background:var(--panel);border:1px solid var(--line-strong);border-radius:var(--r);box-shadow:var(--shadow);width:268px;padding:10px}
+#codePopup .ph{font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:var(--ink-soft);font-weight:700;margin:0 2px 8px;display:flex;align-items:center;gap:6px}
+#codePopup .pquote{font-size:12px;color:var(--ink-soft);font-style:italic;margin:0 2px 9px;max-height:46px;overflow:hidden;border-left:2px solid var(--line-strong);padding-left:8px}
+#codePopup .plist{max-height:190px;overflow:auto;margin:-2px}
+#codePopup .pcode{display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:var(--r-sm);cursor:pointer}
+#codePopup .pcode:hover{background:var(--panel-2)}
+#codePopup .pcode.on{background:var(--accent-soft)}
+#codePopup .pcode .ck{margin-left:auto;color:var(--accent);font-weight:700;opacity:0}
+#codePopup .pcode.on .ck{opacity:1}
+#codePopup .newrow{display:flex;gap:6px;margin-top:8px;border-top:1px solid var(--line);padding-top:9px}
+#codePopup .newrow input{flex:1;min-width:0;border:1px solid var(--line);background:var(--paper);border-radius:var(--r-sm);padding:6px 8px}
+#codePopup .newrow input:focus{outline:none;border-color:var(--accent)}
+
+.overlay{position:fixed;inset:0;background:rgba(15,17,20,.44);z-index:60;display:grid;place-items:center;padding:20px}
+.modal{background:var(--panel);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);width:min(500px,100%);max-height:86vh;overflow:auto;padding:20px}
+.modal h2{font-size:17px;margin-bottom:4px}
+.modal .sub{color:var(--ink-soft);font-size:12.5px;margin-bottom:16px}
+.modal ul{margin:0 0 6px;padding-left:18px;line-height:1.6}
+.modal li{margin-bottom:6px}
+.field{margin-bottom:13px}
+.field label{display:block;font-size:12px;font-weight:600;color:var(--ink-soft);margin-bottom:5px}
+.field input[type=text],.field input[type=password],.field textarea,.field select{width:100%;border:1px solid var(--line);background:var(--paper);border-radius:var(--r-sm);padding:9px 11px}
+.field input:focus,.field textarea:focus,.field select:focus{outline:none;border-color:var(--accent)}
+.field textarea{min-height:90px;resize:vertical;line-height:1.55}
+.field textarea[readonly]{opacity:.8}
+.palette{display:flex;flex-wrap:wrap;gap:7px}
+.palette .p{width:26px;height:26px;border-radius:7px;cursor:pointer;box-shadow:inset 0 0 0 1px rgba(0,0,0,.12);border:none}
+.palette .p.on{box-shadow:0 0 0 2px var(--panel),0 0 0 4px var(--ink)}
+.modal-actions{display:flex;gap:9px;justify-content:flex-end;margin-top:20px;flex-wrap:wrap}
+.modal-actions .left{margin-right:auto}
+
+.q-codes{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 2px}
+.chip{display:inline-flex;align-items:center;gap:6px;background:var(--panel-2);border-radius:20px;padding:3px 10px;font-weight:600;font-size:12.5px}
+.chip.rmable{padding-right:6px}
+.chip .dot{width:9px;height:9px;border-radius:50%}
+.chip .rm{border:none;background:transparent;color:var(--ink-soft);padding:2px 4px;border-radius:50%;line-height:1}
+.chip .rm:hover{color:var(--danger);background:var(--panel)}
+.who{display:inline-flex;align-items:center;gap:6px;font-weight:600}
+.byline{font-size:12px;color:var(--ink-soft);margin-bottom:6px;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.blockquote{border-left:3px solid var(--accent);background:var(--paper);padding:10px 14px;border-radius:0 var(--r-sm) var(--r-sm) 0;font-size:14.5px;line-height:1.6;margin:2px 0 14px;max-height:160px;overflow:auto;white-space:pre-wrap}
+.copybox{width:100%;min-height:220px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;border:1px solid var(--line);background:var(--paper);border-radius:var(--r-sm);padding:10px}
+
+.pad-scroll{height:100%;overflow:auto;padding:24px 16px 60px}
+.wrap{max-width:1000px;margin:0 auto}
+.view-title{font-size:20px;letter-spacing:-.01em;margin-bottom:3px}
+.view-sub{color:var(--ink-soft);margin:0 0 22px;font-size:13px}
+.stat-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px;margin-bottom:26px}
+.stat{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:14px 16px}
+.stat .n{font-family:var(--display);font-size:26px;font-weight:700;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.stat .l{font-size:11.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--ink-soft);font-weight:600;margin-top:2px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:18px;margin-bottom:20px;min-width:0}
+.card h3{font-size:14px;margin-bottom:3px}
+.card .ch-sub{color:var(--ink-soft);font-size:12px;margin:0 0 16px;max-width:75ch}
+.bar-row{display:grid;grid-template-columns:minmax(0,150px) minmax(0,1fr) 42px;align-items:center;gap:12px;margin-bottom:8px;font-size:13px}
+.bar-row .bl{display:flex;align-items:center;gap:8px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.bar-track{height:20px;background:var(--panel-2);border-radius:5px;overflow:hidden}
+.bar-fill{height:100%;border-radius:5px;min-width:2px;transition:width .3s}
+.bar-row .bv{text-align:right;font-weight:700;font-variant-numeric:tabular-nums;color:var(--ink-soft)}
+table.matrix{border-collapse:collapse;font-size:12.5px;width:100%}
+table.matrix th,table.matrix td{border:1px solid var(--line);padding:7px 9px;text-align:center;font-variant-numeric:tabular-nums}
+table.matrix th{background:var(--panel-2);font-weight:700}
+table.matrix .rowh{text-align:left;font-weight:600;white-space:nowrap;max-width:190px;overflow:hidden;text-overflow:ellipsis}
+table.matrix td.v0{color:var(--ink-soft);opacity:.5}
+table.matrix td.ag-hi{color:var(--good);font-weight:700}
+table.matrix td.ag-mid{color:var(--warn);font-weight:700}
+table.matrix td.ag-lo{color:var(--danger);font-weight:700}
+table.matrix tr.total td{font-weight:700;background:var(--panel-2)}
+.matrix-scroll{overflow-x:auto}
+.cooc-row{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--line);font-size:13px}
+.cooc-row:last-child{border:none}
+.cooc-pair{display:flex;align-items:center;gap:7px;flex:1;flex-wrap:wrap;min-width:0}
+.cooc-n{font-weight:700;font-variant-numeric:tabular-nums;background:var(--accent-soft);color:var(--accent);padding:2px 10px;border-radius:20px}
+
+.memo-layout{display:grid;grid-template-columns:240px minmax(0,1fr);gap:18px;align-items:start}
+.memo-list .mitem{padding:11px 13px;border:1px solid var(--line);border-radius:var(--r-sm);margin-bottom:8px;cursor:pointer;background:var(--panel)}
+.memo-list .mitem.active{border-color:var(--accent);background:var(--accent-soft)}
+.memo-list .mitem .mt{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.memo-list .mitem .md{font-size:11.5px;color:var(--ink-soft);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.memo-edit{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:16px}
+.memo-edit input.mtitle{width:100%;border:none;background:transparent;font-family:var(--display);font-size:18px;font-weight:600;padding:4px 2px;margin-bottom:8px}
+.memo-edit input.mtitle:focus{outline:none}
+.memo-edit textarea{width:100%;min-height:340px;border:1px solid var(--line);background:var(--paper);border-radius:var(--r-sm);padding:13px;line-height:1.6;resize:vertical}
+.memo-edit textarea:focus{outline:none;border-color:var(--accent)}
+
+.badge-ex{font-size:10.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--warn);background:color-mix(in srgb,var(--warn) 16%,transparent);padding:2px 8px;border-radius:20px}
+
+#toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%) translateY(20px);background:var(--ink);color:var(--paper);
+  padding:10px 18px;border-radius:30px;font-weight:600;font-size:13px;box-shadow:var(--shadow);opacity:0;pointer-events:none;transition:.25s;z-index:80;max-width:calc(100% - 32px);text-align:center}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+.muted{color:var(--ink-soft)}
+.hollow{text-align:center;color:var(--ink-soft);padding:40px 20px}
+
+@media (max-width:860px){
+  .workspace{grid-template-columns:minmax(0,1fr);grid-template-rows:auto auto auto;height:auto}
+  section.view{overflow:auto}
+  .col.docs,.col.codes{border:none;border-bottom:1px solid var(--line)}
+  .col-body{max-height:34vh}
+  .viewer-wrap{min-height:52vh}
+  .memo-layout{grid-template-columns:minmax(0,1fr)}
+  .tabs{order:5;width:100%;justify-content:center}
+  .bar-row{grid-template-columns:minmax(0,110px) minmax(0,1fr) 36px}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+<meta name="robots" content="noindex,nofollow">
+<script>window.QUALIA_API_URL="https://script.google.com/macros/s/AKfycbxV3lFBxxpdPyaU87uegVjmnfj84LF9Xx30PaINMPhDXGGbQPRJQbZBndlPn-21Pk5Wcg/exec";</script>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand"><span class="glyph">◆</span><span>Qualia<br><small>qualitative coder</small></span></div>
+  <input id="projName" class="proj-name" value="" aria-label="Project name">
+  <div class="tabs" role="tablist">
+    <button class="tab" role="tab" data-view="code" aria-selected="true">Code</button>
+    <button class="tab" role="tab" data-view="analyze" aria-selected="false">Analyze</button>
+    <button class="tab" role="tab" data-view="memos" aria-selected="false">Memos</button>
+  </div>
+  <div class="spacer"></div>
+  <button class="people" id="people" title="Coders on this project"></button>
+  <button class="status" id="statusPill" data-s="connecting" title="How saving and sharing work"><span class="led"></span><span id="statusText">Connecting…</span></button>
+  <div class="menu">
+    <button class="btn" id="projBtn">Project ▾</button>
+    <div class="dropdown" id="projMenu" hidden></div>
+  </div>
+  <button class="btn ghost sm" id="themeBtn" title="Toggle theme" aria-label="Toggle theme">◐</button>
+</header>
+
+<main>
+  <section class="view" id="view-code">
+    <div class="workspace">
+      <aside class="col docs">
+        <div class="col-head"><h3>Documents</h3><span class="count" id="docCount">0</span></div>
+        <div class="col-body" id="docList"></div>
+        <div class="col-foot"><button class="btn primary sm" id="addDocBtn" style="width:100%">+ Add document</button></div>
+      </aside>
+      <div class="col viewer-wrap">
+        <div class="viewer-head">
+          <span class="doc-title" id="viewerTitle">—</span>
+          <span class="badge-ex" id="exBadge" hidden>example</span>
+          <label class="coder-sel" id="coderWrap" hidden>Coder <select id="coderSel"></select></label>
+          <span class="hint" id="viewerHint">Select text to code it</span>
+        </div>
+        <div class="viewer-scroll"><div id="viewer"></div></div>
+      </div>
+      <aside class="col codes">
+        <div class="col-head"><h3>Codebook</h3><span class="count" id="codeCount">0</span></div>
+        <div class="col-body">
+          <input class="code-search" id="codeSearch" placeholder="Filter codes…" aria-label="Filter codes">
+          <div id="codeList"></div>
+        </div>
+        <div class="col-foot"><button class="btn sm" id="addCodeBtn" style="width:100%">+ New code</button></div>
+      </aside>
+    </div>
+  </section>
+
+  <section class="view" id="view-analyze" hidden>
+    <div class="pad-scroll"><div class="wrap" id="analyzeWrap"></div></div>
+  </section>
+
+  <section class="view" id="view-memos" hidden>
+    <div class="pad-scroll"><div class="wrap">
+      <h1 class="view-title">Memos</h1>
+      <p class="view-sub">Analytic notes: research questions, emerging themes, decisions about the codebook.</p>
+      <div style="margin-bottom:14px"><button class="btn primary sm" id="addMemoBtn">+ New memo</button></div>
+      <div class="memo-layout"><div class="memo-list" id="memoList"></div><div id="memoEditWrap"></div></div>
+    </div></div>
+  </section>
+</main>
+
+<div id="codePopup" hidden></div>
+<div id="modalRoot"></div>
+<div id="toast" role="status" aria-live="polite"></div>
+<input type="file" id="fileInput" accept=".txt,.md,.text" hidden>
+<input type="file" id="projInput" accept=".json,application/json" hidden>
+
+<script>
+"use strict";
+/* ================= constants & state ================= */
+const PALETTE=["#117a74","#2f6fb3","#9b4bbf","#c0563f","#d39712","#3f8f4e","#b5417e","#5a6b8c","#7a7320","#348a98","#8a5a2b","#6b5bd6"];
+const KEY="qualia_coder_v1";                         // offline (this-browser) project
+const ME_KEY=window.QUALIA_ID_KEY||"qualia_coder_me"; // who I am on this device
+const PASS_KEY="qualia_coder_pass";
+const CHUNK=20000;                                   // chars per stored text piece (a Sheets cell holds 50,000)
+const IN_GAS=!!(window.google&&google.script&&google.script.run);
+const API_URL=String(window.QUALIA_API_URL||"").trim();      // set on the GitHub Pages copy
+const SHARED=IN_GAS||!!API_URL;
+const $=id=>document.getElementById(id);
+
+let state=emptyProject();
+let ui={view:"code",currentDoc:null,codeFilter:null,search:"",memoId:null,coder:"all",dragging:false,renderAfterDrag:false,modalLocked:false};
+let mode="connecting";   // connecting | shared | local
+let status="connecting"; // connecting | live | offline | locked | local
+const readOnly=false;
+let me={id:null,name:""};
+let people={};           // coderId -> {name}
+
+function uid(p){return p+Date.now().toString(36)+Math.random().toString(36).slice(2,8)}
+function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[m]))}
+function lsGet(k){try{return localStorage.getItem(k)}catch(e){return null}}
+function lsSet(k,v){try{localStorage.setItem(k,v)}catch(e){}}
+function codeById(id){return state.codes.find(c=>c.id===id)}
+function docById(id){return state.documents.find(d=>d.id===id)}
+function myBy(){return mode==="shared"?me.id:null}
+function qText(q){const d=docById(q.docId);return d&&d.content&&q.end<=d.content.length?d.content.slice(q.start,q.end):(q.text||"")}
+function visibleQuotes(){return ui.coder==="all"?state.quotations:state.quotations.filter(q=>q.by===ui.coder)}
+function quotesOfDoc(id){return visibleQuotes().filter(q=>q.docId===id)}
+function canModifyQ(q){return mode!=="shared"||!q.by||q.by===me.id}
+function canDeleteQ(q){return canModifyQ(q)}
+function canDeleteDoc(d){return mode!=="shared"||!d.by||d.by===me.id}
+function emptyProject(){return{name:"Untitled project",documents:[],codes:[],quotations:[],memos:[]}}
+function requireName(){if(mode==="shared"&&!me.name){askName(true);return false;}return true;}
+
+/* ================= people ================= */
+function personName(id){if(!id)return"Unattributed";if(id===me.id)return"You";const p=people[id];return p&&p.name?p.name:"Someone"}
+function rawName(id){if(id===me.id)return me.name||"You";const p=people[id];return p&&p.name?p.name:"Someone"}
+function personColor(id){let h=0;for(const ch of String(id))h=(h*31+ch.charCodeAt(0))>>>0;return PALETTE[h%PALETTE.length]}
+function initials(id){const n=rawName(id).trim();const w=n.split(/\s+/).filter(Boolean);
+  const s=(w.length>1?w[0][0]+w[1][0]:[...n].slice(0,/^[\x00-\x7f]/.test(n)?2:1).join(""));return (s||"?").toUpperCase()}
+function avatarHTML(id,extra){return `<span class="ini${extra?" "+extra:""}" style="background:${personColor(id)}" title="${esc(rawName(id))}">${esc(initials(id))}</span>`}
+function whoHTML(id){return id?`<span class="who">${avatarHTML(id,"sm")}${esc(personName(id))}</span>`:`<span class="who">Unattributed</span>`}
+function coderIds(){return [...new Set(state.quotations.map(q=>q.by).filter(Boolean))]}
+function contributorIds(){return [...new Set([...state.quotations,...state.documents,...state.memos,...state.codes].map(x=>x.by).filter(Boolean))]}
+function loadMe(){const r=lsGet(ME_KEY);if(r){try{const o=JSON.parse(r);if(o&&o.id)me={id:o.id,name:o.name||""};}catch(e){}}}
+function askName(first){
+  openModal(`<h2>${first?"Who's coding?":"Change your name"}</h2>
+    <p class="sub">${first?"Your name is shown next to every passage you code, so the team can compare coders. It's remembered on this device.":"Your codings keep their link to you; only the displayed name changes."}</p>
+    <div class="field"><label for="n_name">Your name</label><input type="text" id="n_name" maxlength="60" value="${esc(me.name)}" placeholder="e.g. Mei-Ling"></div>
+    <div class="modal-actions">${first?"":'<button class="btn" data-close>Cancel</button>'}<button class="btn primary" id="n_save">${first?"Start coding":"Save"}</button></div>`,{locked:first});
+  const go=()=>{const v=$("n_name").value.trim();if(!v){toast("Enter your name to continue");return;}
+    // same person on a new device or browser: typing an existing name continues as that coder
+    const existing=first?Object.keys(people).find(id=>id!==me.id&&(people[id].name||"").trim().toLowerCase()===v.toLowerCase()):null;
+    if(existing){me.id=existing;me.name=people[existing].name;lsSet(ME_KEY,JSON.stringify(me));closeModal(true);renderAll();toast("Welcome back, "+me.name);return;}
+    if(!me.id)me.id=uid("u");me.name=v;lsSet(ME_KEY,JSON.stringify(me));
+    people[me.id]={name:v};queueWrite("people/"+me.id,{name:v,at:Date.now()});
+    closeModal(true);renderAll();toast("Coding as "+v);};
+  $("n_save").onclick=go;$("n_name").addEventListener("keydown",e=>{if(e.key==="Enter")go();});
+}
+
+/* ================= sample project ================= */
+function sampleProject(){
+  const txt=`Interviewer: Thanks for joining. To start, how has moving to remote work changed your daily routine?
+
+Participant: Honestly it rewired everything. I used to anchor my day around the commute — now the boundary between work and home just dissolves. Some mornings I open my laptop before I've even had coffee, and some evenings I realise it's eight o'clock and I never really stopped.
+
+Interviewer: Does that flexibility feel like a gain or a loss?
+
+Participant: Both, and that's the hard part. I love not losing two hours to the train. I can start a load of laundry between meetings, pick up my kid from school. But the flip side is that I feel like I'm always half-available. There's a quiet pressure to respond to messages instantly, because being offline looks like being absent.
+
+Interviewer: How does your team stay connected?
+
+Participant: We over-communicate on purpose. Lots of short video calls, a very active chat channel. It mostly works, but I miss the unplanned stuff — the corridor conversation where a problem gets solved in thirty seconds. Now everything needs a calendar invite. Collaboration became more deliberate but also more exhausting.
+
+Interviewer: What would make remote work sustainable for you long term?
+
+Participant: Clearer norms, really. If the company actually protected focus time and said it's fine to be offline after six, I think I'd thrive. The technology isn't the problem. It's the unspoken expectations around it.`;
+  const by=myBy(),now=Date.now();
+  const d={id:uid("d"),name:"Interview 01 — Remote work (example)",content:txt,example:true,by,at:now};
+  const mk=(n,c,g,m,i)=>({id:uid("c"),name:n,color:c,group:g,memo:m||"",by,at:now+i});
+  const c1=mk("Work-life boundary",PALETTE[0],"Experience","The dissolving line between work and home.",0);
+  const c2=mk("Flexibility",PALETTE[3],"Experience","",1);
+  const c3=mk("Always-on pressure",PALETTE[2],"Tension","Felt expectation of constant availability.",2);
+  const c4=mk("Team communication",PALETTE[1],"Practice","",3);
+  const c5=mk("Organisational norms",PALETTE[4],"Solution","",4);
+  const quotes=[];
+  const addQ=(phrase,codeIds,comment)=>{const i=txt.indexOf(phrase);if(i<0)return;quotes.push({id:uid("q"),docId:d.id,start:i,end:i+phrase.length,text:phrase,codeIds,comment:comment||"",by,at:now});};
+  addQ("the boundary between work and home just dissolves",[c1.id],"Core metaphor: dissolving boundary.");
+  addQ("some evenings I realise it's eight o'clock and I never really stopped",[c1.id,c3.id]);
+  addQ("I love not losing two hours to the train",[c2.id]);
+  addQ("I can start a load of laundry between meetings, pick up my kid from school",[c2.id]);
+  addQ("a quiet pressure to respond to messages instantly, because being offline looks like being absent",[c3.id],"Availability as visibility.");
+  addQ("We over-communicate on purpose",[c4.id]);
+  addQ("I miss the unplanned stuff",[c4.id],"Loss of informal collaboration.");
+  addQ("Collaboration became more deliberate but also more exhausting",[c4.id]);
+  addQ("If the company actually protected focus time and said it's fine to be offline after six",[c5.id,c3.id]);
+  addQ("It's the unspoken expectations around it",[c5.id],"Problem framed as norms, not tech.");
+  return {name:"Example — Remote work study",documents:[d],codes:[c1,c2,c3,c4,c5],quotations:quotes,
+    memos:[{id:uid("m"),title:"Research question (example)",content:"RQ: How do remote workers experience the renegotiation of work-life boundaries?\n\nEarly hunch: the boundary problem is less about technology and more about unspoken availability norms.",by,at:now,updated:now}]};
+}
+
+/* ================= offline (this browser) storage ================= */
+function saveLocal(){if(mode!=="local")return;lsSet(KEY,JSON.stringify(state))}
+function loadLocal(){const r=lsGet(KEY);if(r){try{const s=JSON.parse(r);if(s&&Array.isArray(s.documents))return s;}catch(e){}}return null}
+function localMigratable(){const s=loadLocal();return !!(s&&s.documents.some(d=>!d.example))}
+
+/* ================= unified write layer ================= */
+function upsertLocal(kind,obj){const a=state[kind];const i=a.findIndex(x=>x.id===obj.id);if(i>=0)a[i]=obj;else a.push(obj);}
+function put(kind,obj){
+  upsertLocal(kind,obj);
+  if(mode==="shared"){if(kind==="documents")writeDocumentShared(obj);else queueWrite(kind+"/"+obj.id,bodyOf(obj));}
+  else saveLocal();
+  scheduleRender();
+}
+function del(kind,id){
+  const old=state[kind].find(x=>x.id===id);
+  state[kind]=state[kind].filter(x=>x.id!==id);
+  if(mode==="shared"){
+    queueWrite(kind+"/"+id,null);
+    if(kind==="documents"){const r=raw.documents[id];const n=r&&r.chunks?r.chunks:Math.max(1,Math.ceil(((old&&old.content)||"").length/CHUNK));for(let i=0;i<n;i++)queueWrite("doctext/"+id+"-"+i,null);}
+  }else saveLocal();
+  scheduleRender();
+}
+function bodyOf(o){const c={...o};delete c.id;delete c.content;if(c.text&&c.text.length>5000)c.text=c.text.slice(0,5000);return JSON.parse(JSON.stringify(c));}
+function joinText(id){return Object.values(raw.doctext).filter(t=>t.docId===id).sort((a,b)=>a.i-b.i).map(t=>t.text).join("")}
+function writeDocumentShared(d){
+  const text=d.content||"";const n=Math.max(1,Math.ceil(text.length/CHUNK));
+  const r=raw.documents[d.id];const oldN=r&&r.chunks?r.chunks:0;
+  if(!r||joinText(d.id)!==text){
+    for(let i=0;i<n;i++)queueWrite("doctext/"+d.id+"-"+i,{docId:d.id,i,text:text.slice(i*CHUNK,(i+1)*CHUNK)});
+    for(let i=n;i<oldN;i++)queueWrite("doctext/"+d.id+"-"+i,null);
+  }
+  queueWrite("documents/"+d.id,{name:d.name,chunks:n,by:d.by||null,at:d.at||Date.now(),example:!!d.example});
+}
+function setProjectName(n){state.name=n;if(mode==="shared")queueWrite("meta/project",{name:n});else saveLocal();}
+
+/* ================= sync with the Google Sheet ================= */
+const DEL={};const pendingW=new Map();
+const raw={meta:{},documents:{},doctext:{},codes:{},quotations:{},memos:{},people:{}};
+let since=0,syncing=false,syncTimer=null,firstSynced=false,fails=0,syncAgain=false;
+function queueWrite(path,body){pendingW.set(path,body===null?DEL:body);if(mode==="shared")scheduleSync(400);}
+function scheduleSync(ms){clearTimeout(syncTimer);syncTimer=setTimeout(syncNow,ms);}
+function gs(fn,arg){
+  if(API_URL)   // text/plain keeps this a "simple" request (no CORS preflight); no cookies, so Google account sign-ins never matter
+    return fetch(API_URL,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify({fn,arg}),credentials:"omit",redirect:"follow",cache:"no-store"})
+      .then(r=>{if(!r.ok)throw new Error("HTTP "+r.status);return r.text();})
+      .then(t=>{try{return JSON.parse(t);}catch(e){throw new Error("Not JSON (is the Apps Script updated with doPost?)");}});
+  return new Promise((res,rej)=>{google.script.run.withSuccessHandler(res).withFailureHandler(rej)[fn](arg);});}
+function applyRaw(path,body){const i=path.indexOf("/");const c=path.slice(0,i),id=path.slice(i+1);if(!raw[c])return;if(body==null)delete raw[c][id];else raw[c][id]=body;}
+async function syncNow(){
+  if(mode!=="shared")return;
+  if(syncing){syncAgain=true;return;}
+  syncing=true;clearTimeout(syncTimer);
+  const batch=[...pendingW.entries()].slice(0,40);
+  let next=document.hidden?20000:4000;
+  try{
+    const r=await gs("api",{passcode:lsGet(PASS_KEY)||"",since,writes:batch.map(([p,b])=>({path:p,body:b===DEL?null:b}))});
+    if(r&&r.error==="bad_passcode"){setStatus("locked");syncing=false;askPasscode();return;}
+    if(!r||r.error){throw new Error((r&&r.error)||"no response");}
+    batch.forEach(([p,b])=>{if(pendingW.get(p)===b)pendingW.delete(p);});
+    (r.changes||[]).forEach(c=>applyRaw(c.path,c.body));
+    (r.rejected||[]).forEach(x=>toast(x.reason==="too_large"?"One item was too large to save and was skipped":"A change couldn't be saved ("+x.reason+")"));
+    since=r.serverTime||since;fails=0;
+    const wasFirst=!firstSynced;firstSynced=true;setStatus("live");
+    if(wasFirst||batch.length||(r.changes&&r.changes.length))rebuild();   // redraw only when something changed
+    if(wasFirst&&!me.name&&!ui.modalLocked)askName(true);
+    if(pendingW.size)next=250;
+  }catch(e){fails++;setStatus("offline");next=Math.min(30000,2000*fails);}
+  syncing=false;
+  if(syncAgain){syncAgain=false;next=Math.min(next,250);}
+  scheduleSync(next);
+}
+document.addEventListener("visibilitychange",()=>{if(mode==="shared"&&!document.hidden)scheduleSync(200);});
+window.addEventListener("beforeunload",e=>{if(mode==="shared"&&pendingW.size){e.preventDefault();e.returnValue="";}});
+function askPasscode(){
+  openModal(`<h2>Passcode needed</h2><p class="sub">This project is protected. Ask the project owner for the passcode.</p>
+    <div class="field"><label for="p_code">Passcode</label><input type="password" id="p_code" autocomplete="off"></div>
+    <div class="modal-actions"><button class="btn primary" id="p_go">Open project</button></div>`,{locked:true});
+  const go=()=>{lsSet(PASS_KEY,$("p_code").value);closeModal(true);setStatus("connecting");syncNow();};
+  $("p_go").onclick=go;$("p_code").addEventListener("keydown",e=>{if(e.key==="Enter")go();});
+}
+function rebuild(){
+  const v={};for(const k in raw)v[k]={...raw[k]};
+  pendingW.forEach((b,p)=>{const i=p.indexOf("/");const c=p.slice(0,i),id=p.slice(i+1);if(!v[c])return;if(b===DEL)delete v[c][id];else v[c][id]=b;});
+  people={};Object.entries(v.people).forEach(([id,p])=>{people[id]={name:(p&&p.name)||""};});
+  if(me.id&&me.name)people[me.id]={name:me.name};
+  const prev=new Map(state.documents.map(d=>[d.id,d]));
+  const texts={};Object.values(v.doctext).forEach(t=>{if(t&&t.docId)(texts[t.docId]=texts[t.docId]||[]).push(t);});
+  state.documents=Object.entries(v.documents).map(([id,d])=>{
+    let content=(texts[id]||[]).sort((a,b)=>a.i-b.i).map(p=>p.text||"").join("");
+    const p=prev.get(id);if(!content&&p&&p.content)content=p.content;
+    return{id,name:d.name||"Untitled document",content,by:d.by||null,at:d.at||0,example:!!d.example};
+  }).sort((a,b)=>a.at-b.at);
+  state.codes=Object.entries(v.codes).map(([id,c])=>({id,name:c.name||"Untitled code",color:c.color||PALETTE[0],group:c.group||"",memo:c.memo||"",by:c.by||null,at:c.at||0})).sort((a,b)=>a.at-b.at);
+  state.quotations=Object.entries(v.quotations).filter(([,q])=>q&&q.docId).map(([id,q])=>({id,docId:q.docId,start:q.start|0,end:q.end|0,text:q.text||"",codeIds:Array.isArray(q.codeIds)?q.codeIds.slice():[],comment:q.comment||"",by:q.by||null,at:q.at||0}));
+  state.memos=Object.entries(v.memos).map(([id,m])=>({id,title:m.title||"",content:m.content||"",by:m.by||null,at:m.at||0,updated:m.updated||0})).sort((a,b)=>b.at-a.at);
+  if(memoDraft){const m=state.memos.find(x=>x.id===memoDraft.id);if(m){m.title=memoDraft.title;m.content=memoDraft.content;}}
+  state.name=(v.meta.project&&v.meta.project.name)||"Shared project";
+  scheduleRender();
+}
+
+/* ================= rendering orchestration ================= */
+let rq=false;
+function scheduleRender(){if(rq)return;rq=true;
+  const run=()=>{if(!rq)return;rq=false;if(ui.dragging){ui.renderAfterDrag=true;return;}renderAll();};
+  requestAnimationFrame(run);setTimeout(run,150);}   // timer fallback: frames pause in background tabs
+function loaded(){return mode==="local"||(mode==="shared"&&firstSynced)}
+function renderAll(){
+  if(!docById(ui.currentDoc))ui.currentDoc=state.documents[0]?state.documents[0].id:null;
+  if(ui.codeFilter&&!codeById(ui.codeFilter))ui.codeFilter=null;
+  const pn=$("projName");if(document.activeElement!==pn)pn.value=state.name;
+  renderStatus();renderPeople();renderCoderSelect();renderDocs();renderViewer();renderCodes();
+  if(ui.view==="analyze")renderAnalyze();
+  if(ui.view==="memos")renderMemos();
+}
+function setStatus(s){status=s;renderStatus();}
+function renderStatus(){
+  const p=$("statusPill");p.setAttribute("data-s",status);
+  $("statusText").textContent={connecting:"Connecting…",live:pendingW.size?"Saving…":"Synced",offline:"Offline · retrying",locked:"Passcode needed",local:"This browser only"}[status]||status;
+}
+function renderPeople(){
+  const el=$("people");
+  if(mode!=="shared"){el.innerHTML="";el.hidden=true;return;}
+  el.hidden=false;
+  const ids=contributorIds();if(me.id&&!ids.includes(me.id))ids.unshift(me.id);
+  if(!me.id){el.innerHTML="";return;}
+  el.innerHTML=ids.slice(0,5).map(id=>avatarHTML(id)).join("")+(ids.length>5?`<span class="more">+${ids.length-5}</span>`:"");
+}
+$("people").onclick=()=>{if(mode==="shared")askName(false);};
+function renderCoderSelect(){
+  const wrap=$("coderWrap"),sel=$("coderSel");const ids=coderIds();
+  if(mode!=="shared"||!ids.length){wrap.hidden=true;ui.coder="all";return;}
+  wrap.hidden=false;if(ui.coder!=="all"&&!ids.includes(ui.coder))ui.coder="all";
+  const ordered=[...ids].sort((a,b)=>a===me.id?-1:b===me.id?1:rawName(a).localeCompare(rawName(b)));
+  const html=`<option value="all">Everyone</option>`+ordered.map(id=>`<option value="${esc(id)}">${esc(id===me.id?"You ("+(me.name||"me")+")":rawName(id))}</option>`).join("");
+  if(sel.innerHTML!==html)sel.innerHTML=html;sel.value=ui.coder;
+}
+$("coderSel").addEventListener("change",e=>{ui.coder=e.target.value;renderAll();});
+
+/* ================= documents ================= */
+function renderDocs(){
+  const el=$("docList");$("docCount").textContent=state.documents.length;
+  if(!state.documents.length){el.innerHTML=`<div class="hollow" style="padding:24px 8px;font-size:12.5px">${loaded()?"No documents yet.<br>Add an interview, transcript or field note.":"Loading…"}</div>`;return;}
+  el.innerHTML="";
+  state.documents.forEach(d=>{
+    const row=document.createElement("div");row.className="doc-item"+(d.id===ui.currentDoc?" active":"");
+    row.innerHTML=`<span class="nm" title="${esc(d.name)}">${esc(d.name)}</span><span class="qn">${quotesOfDoc(d.id).length}</span>${canDeleteDoc(d)?'<button class="x" title="Delete document" aria-label="Delete document">✕</button>':""}`;
+    row.onclick=()=>{ui.currentDoc=d.id;renderDocs();renderViewer();};
+    const x=row.querySelector(".x");if(x)x.onclick=e=>{e.stopPropagation();deleteDoc(d.id);};
+    el.appendChild(row);
+  });
+}
+function deleteDoc(id){
+  const d=docById(id);const all=state.quotations.filter(q=>q.docId===id);
+  const others=mode==="shared"?all.filter(q=>q.by&&q.by!==me.id).length:0;
+  confirmModal("Delete document?",`“${esc(d.name)}” and its ${all.length} coded quotation(s)${others?`, including ${others} by other coders,`:""} will be removed${mode==="shared"?" for everyone":""}. This cannot be undone.`,"Delete",()=>{
+    all.forEach(q=>del("quotations",q.id));del("documents",id);closeModal();toast("Document deleted");});
+}
+function addDocModal(){
+  if(!requireName())return;
+  openModal(`<h2>Add document</h2><p class="sub">Paste text, or upload a .txt / .md file.${mode==="shared"?" Everyone on this project will see it.":""}</p>
+    <div class="field"><label for="f_name">Name</label><input type="text" id="f_name" maxlength="200" placeholder="e.g. Interview 02"></div>
+    <div class="field"><label for="f_text">Text</label><textarea id="f_text" placeholder="Paste transcript or notes here…" style="min-height:200px"></textarea></div>
+    <div class="modal-actions"><button class="btn ghost left" id="f_upload">⤒ Upload file…</button><button class="btn" data-close>Cancel</button><button class="btn primary" id="f_save">Add document</button></div>`);
+  $("f_upload").onclick=()=>$("fileInput").click();
+  $("f_save").onclick=()=>{
+    const name=$("f_name").value.trim()||"Untitled document";const text=$("f_text").value.replace(/\r\n/g,"\n");
+    if(!text.trim()){toast("Add some text first");return;}
+    const d={id:uid("d"),name,content:text,by:myBy(),at:Date.now()};put("documents",d);ui.currentDoc=d.id;closeModal();toast("Document added");};
+}
+$("fileInput").onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();
+  r.onload=()=>{const nm=$("f_name"),tx=$("f_text");if(nm&&!nm.value.trim())nm.value=f.name.replace(/\.[^.]+$/,"");if(tx)tx.value=String(r.result).replace(/\r\n/g,"\n");};
+  r.readAsText(f);e.target.value="";};
+
+/* ================= viewer + highlights ================= */
+function renderViewer(){
+  const v=$("viewer");const d=docById(ui.currentDoc);
+  $("exBadge").hidden=!(d&&d.example);
+  if(!d){
+    $("viewerTitle").textContent="—";
+    if(!loaded()){v.innerHTML=`<div class="empty"><h2>Loading the shared project…</h2><p>Fetching documents and codes from the project's Google Sheet.</p></div>`;return;}
+    const shared=mode==="shared";const acts=[`<button class="btn primary" id="e_add">+ Add document</button>`,`<button class="btn" id="e_sample">${shared?"Add the example project":"Load the example project"}</button>`];
+    if(shared&&localMigratable())acts.push(`<button class="btn" id="e_migrate">Move the project saved in this browser here</button>`);
+    v.innerHTML=`<div class="empty"><h2>${shared?"This shared project has no documents yet":"No document open"}</h2>
+      <p>${shared?"Anything you add here is visible to everyone with the link, and each coding is tagged with who made it.":"Add a document to start coding."}</p><div class="acts">${acts.join("")}</div></div>`;
+    $("e_add").onclick=addDocModal;$("e_sample").onclick=()=>doProjAct("sample");const m=$("e_migrate");if(m)m.onclick=()=>doProjAct("migrate");
+    return;
+  }
+  $("viewerTitle").textContent=d.name;
+  let quotes=quotesOfDoc(d.id);if(ui.codeFilter)quotes=quotes.filter(q=>q.codeIds.includes(ui.codeFilter));
+  const L=d.content.length;const pts=new Set([0,L]);
+  quotes.forEach(q=>{pts.add(Math.max(0,Math.min(L,q.start)));pts.add(Math.max(0,Math.min(L,q.end)));});
+  const sorted=[...pts].sort((a,b)=>a-b);let html="";
+  for(let i=0;i<sorted.length-1;i++){
+    const s=sorted[i],e=sorted[i+1];if(e<=s)continue;const seg=d.content.slice(s,e);
+    const cover=quotes.filter(q=>q.start<=s&&q.end>=e);
+    if(!cover.length){html+=esc(seg);continue;}
+    const first=cover[0];const code=codeById(first.codeIds[0]);const color=code?code.color:"#888";
+    html+=`<mark class="hl${cover.length>1||first.codeIds.length>1?" multi":""}" style="--c:${color}" data-q="${cover.map(c=>c.id).join(",")}">${esc(seg)}</mark>`;
+  }
+  v.innerHTML=html;
+  v.querySelectorAll("mark.hl").forEach(m=>{m.onclick=ev=>{ev.stopPropagation();openQuotationInspector(m.getAttribute("data-q").split(","));};});
+}
+let pendingSel=null,lastXY={x:0,y:0};
+const viewerEl=$("viewer");
+viewerEl.addEventListener("mousedown",()=>{ui.dragging=true;});
+viewerEl.addEventListener("mouseup",e=>{lastXY={x:e.clientX,y:e.clientY};handleSelection();});
+document.addEventListener("mouseup",()=>{if(ui.dragging){ui.dragging=false;if(ui.renderAfterDrag){ui.renderAfterDrag=false;scheduleRender();}}});
+viewerEl.addEventListener("touchend",e=>{const t=e.changedTouches[0];if(t)lastXY={x:t.clientX,y:t.clientY};setTimeout(handleSelection,30);});
+function charOffset(root,node,offset){
+  if(node===root){let t=0;for(let i=0;i<offset;i++)t+=(root.childNodes[i].textContent||"").length;return t;}
+  if(node.nodeType!==3){let t=0;const w=document.createTreeWalker(root,NodeFilter.SHOW_TEXT);let n;const stop=node.childNodes[offset]||null;
+    while((n=w.nextNode())){if(stop&&(stop===n||stop.contains(n)))return t;if(!stop&&!node.contains(n)&&(node.compareDocumentPosition(n)&Node.DOCUMENT_POSITION_FOLLOWING))return t;t+=n.nodeValue.length;}return t;}
+  let total=0;const w=document.createTreeWalker(root,NodeFilter.SHOW_TEXT);let n;
+  while((n=w.nextNode())){if(n===node)return total+offset;total+=n.nodeValue.length;}return total;
+}
+function handleSelection(){
+  const sel=window.getSelection();if(!sel||sel.isCollapsed||!sel.rangeCount)return;
+  const r=sel.getRangeAt(0);if(!viewerEl.contains(r.commonAncestorContainer))return;
+  const d=docById(ui.currentDoc);if(!d)return;
+  if(!requireName())return;
+  let start=charOffset(viewerEl,r.startContainer,r.startOffset),end=charOffset(viewerEl,r.endContainer,r.endOffset);
+  if(start>end)[start,end]=[end,start];
+  while(start<end&&/\s/.test(d.content[start]))start++;
+  while(end>start&&/\s/.test(d.content[end-1]))end--;
+  if(end-start<1)return;
+  pendingSel={docId:d.id,start,end,text:d.content.slice(start,end),qid:null};openCodePopup();
+}
+
+/* ================= code popup ================= */
+function pendingQuote(){return pendingSel&&pendingSel.qid?state.quotations.find(q=>q.id===pendingSel.qid):null}
+function openCodePopup(){
+  const pop=$("codePopup");const pq=pendingQuote();const applied=pq?pq.codeIds:[];
+  const list=state.codes.length?state.codes.map(c=>`<div class="pcode${applied.includes(c.id)?" on":""}" data-id="${c.id}" role="button" tabindex="0"><span class="swatch" style="background:${c.color}"></span><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600">${esc(c.name)}</span><span class="ck">✓</span></div>`).join("")
+    :`<div class="muted" style="padding:6px 8px;font-size:12.5px">No codes yet. Create one below.</div>`;
+  pop.innerHTML=`<div class="ph">Apply codes <button class="btn ghost sm" data-popclose style="margin-left:auto;padding:1px 7px">Done</button></div>
+    <div class="pquote">${esc(pendingSel.text.slice(0,120))}${pendingSel.text.length>120?"…":""}</div><div class="plist">${list}</div>
+    <div class="newrow"><input id="newCodeName" maxlength="120" placeholder="New code name…" aria-label="New code name"><button class="btn primary sm" id="newCodeGo">Add</button></div>`;
+  pop.hidden=false;
+  const w=pop.offsetWidth,h=pop.offsetHeight;let x=lastXY.x+6,y=lastXY.y+8;
+  if(x+w>innerWidth-10)x=innerWidth-w-10;if(x<10)x=10;if(y+h>innerHeight-10)y=lastXY.y-h-8;if(y<10)y=10;
+  pop.style.left=x+"px";pop.style.top=y+"px";
+  pop.querySelectorAll(".pcode").forEach(el=>{el.onclick=()=>toggleCodeOnPending(el.getAttribute("data-id"));el.onkeydown=e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();el.click();}};});
+  pop.querySelector("[data-popclose]").onclick=closeCodePopup;
+  const inp=$("newCodeName");
+  $("newCodeGo").onclick=()=>{const nm=inp.value.trim();if(!nm)return;const c=createCode(nm);toggleCodeOnPending(c.id,true);openCodePopup();const i2=$("newCodeName");if(i2)i2.focus();};
+  inp.addEventListener("keydown",e=>{if(e.key==="Enter")$("newCodeGo").click();if(e.key==="Escape")closeCodePopup();});
+}
+function closeCodePopup(){$("codePopup").hidden=true;pendingSel=null;const s=window.getSelection();if(s)s.removeAllRanges();}
+document.addEventListener("mousedown",e=>{const pop=$("codePopup");if(!pop.hidden&&!pop.contains(e.target)&&!viewerEl.contains(e.target))closeCodePopup();});
+document.addEventListener("keydown",e=>{if(e.key==="Escape"){if(!$("codePopup").hidden)closeCodePopup();else if($("modalRoot").innerHTML)closeModal();}});
+function createCode(name,color,group,memo){
+  const used=state.codes.map(c=>c.color);const col=color||PALETTE.find(p=>!used.includes(p))||PALETTE[state.codes.length%PALETTE.length];
+  const c={id:uid("c"),name,color:col,group:group||"",memo:memo||"",by:myBy(),at:Date.now()};put("codes",c);return c;
+}
+function toggleCodeOnPending(codeId,forceOn){
+  if(!pendingSel)return;
+  let q=pendingQuote();
+  if(!q)q=state.quotations.find(x=>x.docId===pendingSel.docId&&x.start===pendingSel.start&&x.end===pendingSel.end&&(x.by||null)===myBy());
+  q=q?{...q,codeIds:q.codeIds.slice()}:{id:uid("q"),docId:pendingSel.docId,start:pendingSel.start,end:pendingSel.end,text:pendingSel.text.slice(0,5000),codeIds:[],comment:"",by:myBy(),at:Date.now()};
+  if(!canModifyQ(q)){toast("That quotation belongs to another coder");return;}
+  pendingSel.qid=q.id;
+  const has=q.codeIds.includes(codeId);
+  if(has&&!forceOn)q.codeIds=q.codeIds.filter(x=>x!==codeId);else if(!has)q.codeIds.push(codeId);
+  if(q.codeIds.length)put("quotations",q);else if(state.quotations.some(x=>x.id===q.id))del("quotations",q.id);
+  const now=(pendingQuote()||{codeIds:[]}).codeIds;
+  $("codePopup").querySelectorAll(".pcode").forEach(el=>el.classList.toggle("on",now.includes(el.getAttribute("data-id"))));
+}
+
+/* ================= codebook ================= */
+function renderCodes(){
+  const el=$("codeList");$("codeCount").textContent=state.codes.length;
+  const counts={};visibleQuotes().forEach(q=>q.codeIds.forEach(id=>counts[id]=(counts[id]||0)+1));
+  let codes=[...state.codes];
+  if(ui.search){const s=ui.search.toLowerCase();codes=codes.filter(c=>c.name.toLowerCase().includes(s)||(c.group||"").toLowerCase().includes(s));}
+  if(!codes.length){el.innerHTML=`<div class="hollow" style="padding:22px 8px;font-size:12.5px">${state.codes.length?"No codes match.":"No codes yet.<br>Select text to create one."}</div>`;return;}
+  el.innerHTML="";
+  const groups={};codes.forEach(c=>{(groups[c.group||""]=groups[c.group||""]||[]).push(c);});
+  const keys=Object.keys(groups).sort((a,b)=>a===""?1:b===""?-1:a.localeCompare(b));
+  keys.forEach(g=>{
+    if(keys.length>1||g)el.insertAdjacentHTML("beforeend",`<div class="grp-label">${g?esc(g):"Ungrouped"}</div>`);
+    groups[g].sort((a,b)=>(counts[b.id]||0)-(counts[a.id]||0)||a.name.localeCompare(b.name));
+    groups[g].forEach(c=>{
+      const row=document.createElement("div");row.className="code-item"+(ui.codeFilter===c.id?" filtered":"");row.title=c.memo||"";
+      row.innerHTML=`<span class="swatch" style="background:${c.color}"></span><span class="nm">${esc(c.name)}</span><span class="cnt">${counts[c.id]||0}</span><button class="edit" title="Edit code" aria-label="Edit code">✎</button>`;
+      row.onclick=()=>{ui.codeFilter=ui.codeFilter===c.id?null:c.id;renderCodes();renderViewer();if(ui.codeFilter)toast("Showing only “"+c.name+"”");};
+      row.querySelector(".edit").onclick=e=>{e.stopPropagation();editCodeModal(c.id);};
+      el.appendChild(row);
+    });
+  });
+}
+$("codeSearch").addEventListener("input",e=>{ui.search=e.target.value;renderCodes();});
+$("addCodeBtn").onclick=()=>{if(requireName())editCodeModal(null);};
+function editCodeModal(id){
+  const c=id?codeById(id):{name:"",color:PALETTE.find(p=>!state.codes.map(x=>x.color).includes(p))||PALETTE[0],group:"",memo:""};
+  const isNew=!id;const uses=id?state.quotations.filter(q=>q.codeIds.includes(id)):[];
+  const groups=[...new Set(state.codes.map(x=>x.group).filter(Boolean))];
+  openModal(`<h2>${isNew?"New code":"Edit code"}</h2><p class="sub">${isNew?"Create a label to apply to text.":uses.length+" quotation(s) use this code."}${mode==="shared"?" The codebook is shared by everyone on this project.":""}</p>
+    <div class="field"><label for="c_name">Name</label><input type="text" id="c_name" maxlength="120" value="${esc(c.name)}" placeholder="Code name"></div>
+    <div class="field"><label>Colour</label><div class="palette" id="c_pal">${PALETTE.map(p=>`<button class="p${p===c.color?" on":""}" data-c="${p}" style="background:${p}" aria-label="Colour ${p}"></button>`).join("")}</div></div>
+    <div class="field"><label for="c_group">Group (optional)</label><input type="text" id="c_group" maxlength="80" value="${esc(c.group||"")}" placeholder="e.g. Tension" list="grouplist"><datalist id="grouplist">${groups.map(g=>`<option value="${esc(g)}">`).join("")}</datalist></div>
+    <div class="field"><label for="c_memo">Definition</label><textarea id="c_memo" maxlength="5000" placeholder="What does this code mean? When should it be applied?">${esc(c.memo||"")}</textarea></div>
+    <div class="modal-actions">${isNew?"":'<button class="btn ghost left" id="c_del" style="color:var(--danger)">Delete code</button>'}<button class="btn" data-close>Cancel</button><button class="btn primary" id="c_save">${isNew?"Create":"Save"}</button></div>`);
+  let chosen=c.color;
+  document.querySelectorAll("#c_pal .p").forEach(p=>p.onclick=()=>{chosen=p.getAttribute("data-c");document.querySelectorAll("#c_pal .p").forEach(x=>x.classList.toggle("on",x===p));});
+  $("c_save").onclick=()=>{const name=$("c_name").value.trim();if(!name){toast("Give the code a name");return;}
+    const group=$("c_group").value.trim(),memo=$("c_memo").value;
+    if(isNew)createCode(name,chosen,group,memo);else put("codes",{...c,name,color:chosen,group,memo});closeModal();toast(isNew?"Code created":"Code saved");};
+  const delB=$("c_del");
+  if(delB)delB.onclick=()=>{const others=mode==="shared"?uses.filter(q=>q.by&&q.by!==me.id).length:0;
+    confirmModal("Delete code?",`“${esc(c.name)}” will be removed from ${uses.length} quotation(s)${others?`, ${others} of them by other coders`:""}. Quotations left with no codes are deleted too.`,"Delete",()=>{
+      uses.forEach(q=>{const ids=q.codeIds.filter(x=>x!==id);if(ids.length)put("quotations",{...q,codeIds:ids});else del("quotations",q.id);});del("codes",id);closeModal();toast("Code deleted");});};
+}
+
+/* ================= quotation inspector ================= */
+function openQuotationInspector(ids){
+  const quotes=ids.map(id=>state.quotations.find(q=>q.id===id)).filter(Boolean);
+  if(!quotes.length){closeModal();return;}
+  const body=quotes.map(q=>{const mod=canModifyQ(q);
+    const chips=q.codeIds.map(cid=>{const c=codeById(cid);if(!c)return"";return `<span class="chip${mod?" rmable":""}"><span class="dot" style="background:${c.color}"></span>${esc(c.name)}${mod?`<button class="rm" data-q="${q.id}" data-c="${cid}" title="Remove code" aria-label="Remove code">✕</button>`:""}</span>`;}).join("");
+    return `<div style="margin-bottom:16px">${mode==="shared"?`<div class="byline">Coded by ${whoHTML(q.by)}</div>`:""}
+      <div class="blockquote">${esc(qText(q))}</div>
+      <div class="q-codes">${chips}${mod?`<button class="btn ghost sm" data-addcode="${q.id}">+ code</button>`:""}</div>
+      <div class="field" style="margin-top:10px"><label for="cm_${q.id}">Comment</label><textarea id="cm_${q.id}" data-comment="${q.id}" maxlength="5000" ${mod?"":"readonly"} placeholder="${mod?"Note on this quotation…":"No comment"}">${esc(q.comment||"")}</textarea></div>
+      ${canDeleteQ(q)?`<button class="btn ghost sm" data-delq="${q.id}" style="color:var(--danger)">Delete quotation</button>`:""}</div>`;
+  }).join('<hr style="border:none;border-top:1px solid var(--line);margin:4px 0 16px">');
+  openModal(`<h2>Quotation</h2><p class="sub">${quotes.length>1?quotes.length+" overlapping quotations here.":"Coded segment."}</p>${body}<div class="modal-actions"><button class="btn primary" data-close>Done</button></div>`);
+  document.querySelectorAll("[data-c][data-q]").forEach(b=>b.onclick=()=>{const q=state.quotations.find(x=>x.id===b.getAttribute("data-q"));if(!q)return;
+    const nextIds=q.codeIds.filter(x=>x!==b.getAttribute("data-c"));if(nextIds.length)put("quotations",{...q,codeIds:nextIds});else del("quotations",q.id);
+    openQuotationInspector(ids.filter(id=>state.quotations.some(x=>x.id===id)));});
+  document.querySelectorAll("[data-addcode]").forEach(b=>b.onclick=()=>{const q=state.quotations.find(x=>x.id===b.getAttribute("data-addcode"));if(!q)return;
+    pendingSel={docId:q.docId,start:q.start,end:q.end,text:qText(q),qid:q.id};const r=b.getBoundingClientRect();lastXY={x:r.left,y:r.bottom};closeModal();openCodePopup();});
+  document.querySelectorAll("[data-comment]").forEach(t=>t.addEventListener("change",()=>{const q=state.quotations.find(x=>x.id===t.getAttribute("data-comment"));if(q&&canModifyQ(q)&&q.comment!==t.value)put("quotations",{...q,comment:t.value});}));
+  document.querySelectorAll("[data-delq]").forEach(b=>b.onclick=()=>{del("quotations",b.getAttribute("data-delq"));closeModal();toast("Quotation deleted");});
+}
+
+/* ================= analyze ================= */
+function renderAnalyze(){
+  const w=$("analyzeWrap");
+  const counts={};state.quotations.forEach(q=>q.codeIds.forEach(id=>counts[id]=(counts[id]||0)+1));
+  const apps=Object.values(counts).reduce((a,b)=>a+b,0);
+  const codedChars=state.quotations.reduce((a,q)=>a+Math.max(0,q.end-q.start),0);
+  const coders=mode==="shared"?coderIds():[];
+  const freq=state.codes.map(c=>({c,n:counts[c.id]||0})).sort((a,b)=>b.n-a.n);const max=Math.max(1,...freq.map(f=>f.n));
+  const freqRows=freq.length?freq.map(f=>`<div class="bar-row"><span class="bl"><span class="swatch" style="background:${f.c.color}"></span><span style="overflow:hidden;text-overflow:ellipsis">${esc(f.c.name)}</span></span><div class="bar-track"><div class="bar-fill" style="width:${(f.n/max*100)}%;background:${f.c.color}"></div></div><span class="bv">${f.n}</span></div>`).join(""):`<div class="hollow">No codes applied yet.</div>`;
+  let matrix;
+  if(state.codes.length&&state.documents.length){
+    const head=`<tr><th class="rowh">Code</th>${state.documents.map(d=>`<th title="${esc(d.name)}">${esc(shorten(d.name,16))}</th>`).join("")}<th>Total</th></tr>`;
+    const rows=freq.map(f=>{let sum=0;const cells=state.documents.map(d=>{const n=state.quotations.filter(q=>q.docId===d.id&&q.codeIds.includes(f.c.id)).length;sum+=n;return `<td class="${n?"":"v0"}">${n||"·"}</td>`;}).join("");
+      return `<tr><td class="rowh"><span class="swatch" style="vertical-align:-1px;margin-right:6px;background:${f.c.color}"></span>${esc(f.c.name)}</td>${cells}<td><b>${sum}</b></td></tr>`;}).join("");
+    matrix=`<div class="matrix-scroll"><table class="matrix"><thead>${head}</thead><tbody>${rows}</tbody></table></div>`;
+  }else matrix=`<div class="hollow">Needs at least one code and one document.</div>`;
+  const cooc=computeCooccurrence();
+  const coocHtml=cooc.length?cooc.slice(0,14).map(p=>`<div class="cooc-row"><div class="cooc-pair"><span class="chip"><span class="dot" style="background:${p.a.color}"></span>${esc(p.a.name)}</span><span class="muted">+</span><span class="chip"><span class="dot" style="background:${p.b.color}"></span>${esc(p.b.name)}</span></div><span class="cooc-n">${p.n}</span></div>`).join(""):`<div class="hollow">No co-occurring codes yet. Apply two codes to the same or overlapping passages to see relationships.</div>`;
+  let coderCards="";
+  if(coders.length){
+    const crow=coders.map(u=>{const qs=state.quotations.filter(q=>q.by===u);return `<tr><td class="rowh">${whoHTML(u)}</td><td>${qs.length}</td><td>${qs.reduce((a,q)=>a+q.codeIds.length,0)}</td><td>${new Set(qs.map(q=>q.docId)).size}</td></tr>`;}).join("");
+    const cxHead=`<tr><th class="rowh">Code</th>${coders.map(u=>`<th>${esc(personName(u))}</th>`).join("")}</tr>`;
+    const cxRows=freq.map(f=>`<tr><td class="rowh"><span class="swatch" style="vertical-align:-1px;margin-right:6px;background:${f.c.color}"></span>${esc(f.c.name)}</td>${coders.map(u=>{const n=state.quotations.filter(q=>q.by===u&&q.codeIds.includes(f.c.id)).length;return `<td class="${n?"":"v0"}">${n||"·"}</td>`;}).join("")}</tr>`).join("");
+    coderCards=`<div class="card"><h3>Coders</h3><p class="ch-sub">Who coded what. Each quotation records the person who made it.</p><div class="matrix-scroll"><table class="matrix"><thead><tr><th class="rowh">Coder</th><th>Quotations</th><th>Code applications</th><th>Documents</th></tr></thead><tbody>${crow}</tbody></table></div></div>
+      <div class="card"><h3>Code use by coder</h3><p class="ch-sub">How often each coder applied each code. Big gaps in a row often point to a code definition worth discussing.</p><div class="matrix-scroll"><table class="matrix"><thead>${cxHead}</thead><tbody>${cxRows}</tbody></table></div></div>`+agreementCard(coders);
+  }
+  w.innerHTML=`<h1 class="view-title">Analysis</h1><p class="view-sub">Patterns across ${mode==="shared"?"everyone's":"your"} coded data. Updates as you code.</p>
+    <div class="stat-row"><div class="stat"><div class="n">${state.documents.length}</div><div class="l">Documents</div></div><div class="stat"><div class="n">${state.codes.length}</div><div class="l">Codes</div></div>
+      <div class="stat"><div class="n">${state.quotations.length}</div><div class="l">Quotations</div></div><div class="stat"><div class="n">${apps}</div><div class="l">Code applications</div></div>
+      ${mode==="shared"?`<div class="stat"><div class="n">${coders.length}</div><div class="l">Coders</div></div>`:`<div class="stat"><div class="n">${(codedChars/1000).toFixed(1)}k</div><div class="l">Chars coded</div></div>`}</div>
+    ${coderCards}
+    <div class="card"><h3>Code frequency</h3><p class="ch-sub">Number of quotations each code is applied to, across all coders.</p>${freqRows}</div>
+    <div class="card"><h3>Code–document matrix</h3><p class="ch-sub">How codes distribute across your sources.</p>${matrix}</div>
+    <div class="card"><h3>Code co-occurrence</h3><p class="ch-sub">Code pairs applied to the same or overlapping passages, which suggests candidate relationships.</p>${coocHtml}</div>`;
+}
+function shorten(s,n){return s.length>n?s.slice(0,n-1)+"…":s}
+function computeCooccurrence(){
+  const pairs={};const add=(a,b)=>{if(a===b)return;const k=[a,b].sort().join("|");pairs[k]=(pairs[k]||0)+1;};
+  state.quotations.forEach(q=>{for(let i=0;i<q.codeIds.length;i++)for(let j=i+1;j<q.codeIds.length;j++)add(q.codeIds[i],q.codeIds[j]);});
+  const byDoc={};state.quotations.forEach(q=>{(byDoc[q.docId]=byDoc[q.docId]||[]).push(q);});
+  Object.values(byDoc).forEach(qs=>{for(let i=0;i<qs.length;i++)for(let j=i+1;j<qs.length;j++){const a=qs[i],b=qs[j];if(a.start<b.end&&b.start<a.end)a.codeIds.forEach(x=>b.codeIds.forEach(y=>add(x,y)));}});
+  return Object.entries(pairs).map(([k,n])=>{const[ai,bi]=k.split("|");const a=codeById(ai),b=codeById(bi);return a&&b?{a,b,n}:null;}).filter(Boolean).sort((x,y)=>y.n-x.n);
+}
+function mergeIv(iv){iv.sort((a,b)=>a[0]-b[0]);const o=[];for(const[s,e]of iv){if(o.length&&s<=o[o.length-1][1])o[o.length-1][1]=Math.max(o[o.length-1][1],e);else o.push([s,e]);}return o}
+function ivLen(iv){return iv.reduce((a,[s,e])=>a+e-s,0)}
+function ivInter(A,B){let i=0,j=0,t=0;while(i<A.length&&j<B.length){const s=Math.max(A[i][0],B[j][0]),e=Math.min(A[i][1],B[j][1]);if(e>s)t+=e-s;if(A[i][1]<B[j][1])i++;else j++;}return t}
+function spans(coder,codeId,docs){const m={};state.quotations.forEach(q=>{if(q.by===coder&&q.codeIds.includes(codeId)&&docs.has(q.docId))(m[q.docId]=m[q.docId]||[]).push([q.start,q.end]);});for(const k in m)m[k]=mergeIv(m[k]);return m}
+function agreementCard(coders){
+  if(coders.length<2)return `<div class="card"><h3>Coder agreement</h3><p class="ch-sub" style="margin:0">Appears once at least two people have coded the same document.</p></div>`;
+  const docsOf=u=>new Set(state.quotations.filter(q=>q.by===u).map(q=>q.docId));
+  const pairs=[];for(let i=0;i<coders.length;i++)for(let j=i+1;j<coders.length;j++){const a=coders[i],b=coders[j];const da=docsOf(a),dbb=docsOf(b);const sh=new Set([...da].filter(x=>dbb.has(x)));if(sh.size)pairs.push({a,b,shared:sh});}
+  if(!pairs.length)return `<div class="card"><h3>Coder agreement</h3><p class="ch-sub" style="margin:0">No two coders have worked on the same document yet. Assign the same transcript to two people to compare.</p></div>`;
+  const cell=v=>v==null?`<td class="v0">—</td>`:`<td class="${v>=.7?"ag-hi":v>=.4?"ag-mid":"ag-lo"}">${Math.round(v*100)}%</td>`;
+  const sums=pairs.map(()=>({s:0,n:0}));
+  const rows=state.codes.map(c=>{const vals=pairs.map((p,k)=>{const A=spans(p.a,c.id,p.shared),B=spans(p.b,c.id,p.shared);let I=0,U=0;
+      p.shared.forEach(d=>{const x=ivInter(A[d]||[],B[d]||[]);I+=x;U+=ivLen(A[d]||[])+ivLen(B[d]||[])-x;});const v=U?I/U:null;if(v!=null){sums[k].s+=v;sums[k].n++;}return v;});
+    if(vals.every(v=>v==null))return"";return `<tr><td class="rowh"><span class="swatch" style="vertical-align:-1px;margin-right:6px;background:${c.color}"></span>${esc(c.name)}</td>${vals.map(cell).join("")}</tr>`;}).join("");
+  const head=`<tr><th class="rowh">Code</th>${pairs.map(p=>`<th>${esc(personName(p.a))} ↔ ${esc(personName(p.b))}</th>`).join("")}</tr>`;
+  const total=`<tr class="total"><td class="rowh">Average</td>${sums.map(s=>cell(s.n?s.s/s.n:null)).join("")}</tr>`;
+  return `<div class="card"><h3>Coder agreement</h3><p class="ch-sub">Share of text that both coders marked with the same code, out of the text either of them marked with it (character overlap), counted only on documents both people coded. Use it as a quick consistency check before a calibration discussion. It is not Cohen's kappa.</p>
+    <div class="matrix-scroll"><table class="matrix"><thead>${head}</thead><tbody>${rows||`<tr><td colspan="${pairs.length+1}" class="v0">No code used by both coders yet.</td></tr>`}${rows?total:""}</tbody></table></div></div>`;
+}
+
+/* ================= memos ================= */
+let memoDraft=null,memoTimer=null;
+function flushMemo(){clearTimeout(memoTimer);if(!memoDraft)return;const d=memoDraft;memoDraft=null;const m=state.memos.find(x=>x.id===d.id);if(m)put("memos",{...m,title:d.title,content:d.content,updated:Date.now()});}
+function renderMemos(){
+  const list=$("memoList"),wrap=$("memoEditWrap");
+  if(!state.memos.length){list.innerHTML=`<div class="hollow" style="font-size:12.5px;padding:20px">No memos yet.</div>`;wrap.innerHTML=`<div class="hollow">Create a memo to capture analytic notes.</div>`;return;}
+  if(!state.memos.find(m=>m.id===ui.memoId))ui.memoId=state.memos[0].id;
+  list.innerHTML=state.memos.map(m=>`<div class="mitem${m.id===ui.memoId?" active":""}" data-m="${m.id}" role="button" tabindex="0"><div class="mt">${esc(m.title||"Untitled")}</div><div class="md">${mode==="shared"&&m.by?esc(personName(m.by))+" · ":""}${esc((m.content||"").slice(0,60)||"Empty")}</div></div>`).join("");
+  list.querySelectorAll(".mitem").forEach(el=>{el.onclick=()=>{flushMemo();ui.memoId=el.getAttribute("data-m");renderMemos();};el.onkeydown=e=>{if(e.key==="Enter")el.click();};});
+  const ed=wrap.querySelector(".memo-edit");
+  if(ed&&ed.getAttribute("data-m")===ui.memoId&&ed.contains(document.activeElement))return; // don't rebuild under the typist
+  const m=state.memos.find(x=>x.id===ui.memoId);
+  wrap.innerHTML=`<div class="memo-edit" data-m="${m.id}">
+    <input class="mtitle" id="m_title" maxlength="200" value="${esc(m.title||"")}" placeholder="Memo title" aria-label="Memo title">
+    <textarea id="m_body" maxlength="40000" placeholder="Write your analytic note…" aria-label="Memo text">${esc(m.content||"")}</textarea>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;gap:10px;flex-wrap:wrap">
+      <span class="muted" style="font-size:12px">${mode==="shared"&&m.by?"Started by "+whoHTML(m.by):""}</span>
+      <button class="btn ghost sm" id="m_del" style="color:var(--danger)">Delete memo</button></div></div>`;
+  const t=$("m_title"),b=$("m_body");
+  const onType=()=>{memoDraft={id:m.id,title:t.value,content:b.value};const it=list.querySelector(`[data-m="${m.id}"] .mt`);if(it)it.textContent=t.value||"Untitled";clearTimeout(memoTimer);memoTimer=setTimeout(flushMemo,800);};
+  t.addEventListener("input",onType);b.addEventListener("input",onType);t.addEventListener("blur",flushMemo);b.addEventListener("blur",flushMemo);
+  $("m_del").onclick=()=>confirmModal("Delete memo?",`“${esc(m.title||"Untitled")}” will be deleted${mode==="shared"?" for everyone":""}.`,"Delete",()=>{memoDraft=null;clearTimeout(memoTimer);del("memos",m.id);ui.memoId=null;closeModal();toast("Memo deleted");});
+}
+$("addMemoBtn").onclick=()=>{if(!requireName())return;flushMemo();const now=Date.now();const m={id:uid("m"),title:"New memo",content:"",by:myBy(),at:now,updated:now};put("memos",m);ui.memoId=m.id;renderMemos();const t=$("m_title");if(t){t.focus();t.select();}};
+
+/* ================= tabs ================= */
+document.querySelectorAll(".tab").forEach(t=>t.onclick=()=>{
+  if(ui.view==="memos")flushMemo();ui.view=t.getAttribute("data-view");
+  document.querySelectorAll(".tab").forEach(x=>x.setAttribute("aria-selected",String(x===t)));
+  ["code","analyze","memos"].forEach(v=>$("view-"+v).hidden=(v!==ui.view));closeCodePopup();renderAll();
+});
+
+/* ================= project menu ================= */
+const projBtn=$("projBtn"),projMenu=$("projMenu");
+function buildMenu(){
+  const shared=mode==="shared";const it=[];
+  it.push(`<button data-act="import">${shared?"Import into this project…":"Import project…"}<span class="k">.json</span></button>`);
+  it.push(`<button data-act="export">Export project<span class="k">.json</span></button>`);
+  it.push(`<button data-act="csv">Export quotations<span class="k">.csv</span></button>`);
+  if(shared&&localMigratable())it.push(`<hr><button data-act="migrate">Move the project saved in this browser here</button>`);
+  const extra=[];
+  if(!shared||!state.documents.length)extra.push(`<button data-act="sample">${shared?"Add the example project":"Load the example project"}</button>`);
+  if(!shared)extra.push(`<button data-act="clear" class="del">Clear everything…</button>`);
+  if(extra.length)it.push("<hr>"+extra.join(""));
+  projMenu.innerHTML=it.join("");
+  projMenu.querySelectorAll("button").forEach(b=>b.onclick=()=>{projMenu.hidden=true;doProjAct(b.getAttribute("data-act"));});
+}
+projBtn.onclick=e=>{e.stopPropagation();if(projMenu.hidden)buildMenu();projMenu.hidden=!projMenu.hidden;};
+document.addEventListener("click",e=>{if(!projMenu.contains(e.target)&&e.target!==projBtn)projMenu.hidden=true;});
+function importInto(data){const by=myBy(),now=Date.now();
+  (data.codes||[]).forEach((c,i)=>put("codes",{...c,by:c.by||by,at:c.at||now+i}));
+  (data.documents||[]).forEach((d,i)=>put("documents",{...d,content:d.content||"",by:d.by||by,at:d.at||now+i}));
+  (data.quotations||[]).forEach(q=>put("quotations",{...q,codeIds:q.codeIds||[],by:q.by||by,at:q.at||now}));
+  (data.memos||[]).forEach((m,i)=>put("memos",{...m,by:m.by||by,at:m.at||m.updated||now+i}));}
+function writesDrained(){return new Promise(res=>{const chk=()=>{if(!pendingW.size&&!syncing)res();else setTimeout(chk,400);};chk();});}
+async function bulkImport(data,label){
+  if(mode!=="shared"){state={name:data.name||"Imported project",documents:data.documents||[],codes:data.codes||[],quotations:data.quotations||[],memos:data.memos||[]};
+    ui.currentDoc=null;ui.memoId=null;ui.codeFilter=null;saveLocal();renderAll();toast(label+" loaded");return;}
+  if(!requireName())return;
+  const n=(data.documents||[]).length+(data.codes||[]).length+(data.quotations||[]).length+(data.memos||[]).length;
+  toast("Saving "+n+" items to the shared project…");importInto(data);
+  if(!raw.meta.project&&data.name)setProjectName(data.name);
+  await writesDrained();toast(label+" added to the shared project");
+}
+function doProjAct(a){
+  if(a==="export"){const out={name:state.name,documents:state.documents,codes:state.codes,quotations:state.quotations,memos:state.memos,people:mode==="shared"?people:{},_app:"qualia-coder",_v:2};downloadText(JSON.stringify(out,null,2),safeName(state.name||"project")+".json");}
+  if(a==="csv")exportCSV();
+  if(a==="import")$("projInput").click();
+  if(a==="migrate"){const s=loadLocal();if(!s)return;confirmModal("Move this browser's project into the shared project?",`${s.documents.length} document(s), ${s.codes.length} code(s) and ${s.quotations.length} quotation(s) will be added and attributed to you. Your browser copy stays as it is.`,"Move",()=>{closeModal();bulkImport(s,"Your project");},false);}
+  if(a==="sample"){if(mode==="shared"){if(requireName())bulkImport(sampleProject(),"Example project");}
+    else confirmModal("Load the example project?","This replaces the project saved in this browser. Export it first if you want to keep it.","Load example",()=>{closeModal();bulkImport(sampleProject(),"Example project");});}
+  if(a==="clear")confirmModal("Clear everything?","All documents, codes, quotations and memos saved in this browser will be deleted. This cannot be undone.","Clear all",()=>{state=emptyProject();ui.currentDoc=null;ui.memoId=null;ui.codeFilter=null;saveLocal();closeModal();renderAll();toast("Cleared");});
+}
+$("projInput").onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();
+  r.onload=()=>{let data;try{data=JSON.parse(r.result);if(!Array.isArray(data.documents)||!Array.isArray(data.codes))throw 0;}catch(err){toast("That file isn't a Qualia project (.json)");return;}
+    if(mode==="shared"){if(data.people&&typeof data.people==="object")Object.entries(data.people).forEach(([id,p])=>{if(p&&p.name&&!raw.people[id])queueWrite("people/"+id,{name:p.name,at:Date.now()});});
+      confirmModal("Import into the shared project?",`${data.documents.length} document(s), ${data.codes.length} code(s) and ${(data.quotations||[]).length} quotation(s) will be added. Items with the same ID as existing ones are overwritten.`,"Import",()=>{closeModal();bulkImport(data,"Import");},false);}
+    else confirmModal("Import project?","This replaces the project saved in this browser.","Import",()=>{closeModal();bulkImport(data,"Project");},false);};
+  r.readAsText(f);e.target.value="";};
+function safeName(s){return s.replace(/[\\/:*?"<>|]+/g,"-").slice(0,80)||"project"}
+function exportCSV(){
+  const head=["Document","Codes","Quote","Comment","Start","End"];if(mode==="shared")head.splice(2,0,"Coder");const rows=[head];
+  state.quotations.forEach(q=>{const d=docById(q.docId);const r=[d?d.name:"",q.codeIds.map(id=>{const c=codeById(id);return c?c.name:"";}).filter(Boolean).join("; "),qText(q),q.comment||"",q.start,q.end];
+    if(mode==="shared")r.splice(2,0,q.by?rawName(q.by):"");rows.push(r);});
+  downloadText("﻿"+rows.map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(",")).join("\r\n"),safeName(state.name||"quotations")+" - quotations.csv");
+}
+function downloadText(content,filename){
+  try{const blob=new Blob([content],{type:"application/octet-stream"});const url=URL.createObjectURL(blob);
+    const a=document.createElement("a");a.href=url;a.download=filename;a.target="_self";document.body.appendChild(a);a.click();
+    setTimeout(()=>{URL.revokeObjectURL(url);a.remove();},400);toast("Downloading "+filename);
+  }catch(e){showCopyModal(content,filename);}
+}
+function showCopyModal(content,filename){
+  openModal(`<h2>Copy your export</h2><p class="sub">This browser blocked the download. Copy the text below and save it as <b>${esc(filename)}</b>.</p>
+    <textarea class="copybox" id="cp_box" readonly>${esc(content)}</textarea><div class="modal-actions"><button class="btn" data-close>Close</button><button class="btn primary" id="cp_go">Copy</button></div>`);
+  $("cp_go").onclick=()=>{const t=$("cp_box");t.select();const ok=()=>toast("Copied");
+    if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(content).then(ok,()=>{try{document.execCommand("copy");ok();}catch(e){toast("Press Ctrl/⌘+C to copy");}});
+    else{try{document.execCommand("copy");ok();}catch(e){toast("Press Ctrl/⌘+C to copy");}}};
+}
+$("projName").addEventListener("change",e=>setProjectName(e.target.value.trim()||"Untitled project"));
+
+/* ================= explainer ================= */
+$("statusPill").onclick=()=>{
+  if(mode==="shared"){
+    openModal(`<h2>Coding together</h2><p class="sub">${status==="live"?"Connected. Changes save automatically and reach the others within a few seconds.":status==="locked"?"Enter the project passcode to connect.":"Trying to reach the project. Your changes are kept and sent once it connects."}</p>
+      <ul><li>Everyone who opens this link works in the same project: the same documents, codebook and memos.</li>
+        <li>The data is stored in the project owner's Google Sheet.</li>
+        <li>Each quotation records who coded it. You can change only your own; the codebook is shared, so anyone can edit codes.</li>
+        <li>Use <b>Coder</b> above the text to see one person's coding, and <b>Analyze → Coder agreement</b> to compare two coders on the same document.</li></ul>
+      <p class="sub" style="margin-top:12px">You're coding as <b>${esc(me.name||"(no name yet)")}</b> on this device.</p>
+      <div class="modal-actions"><button class="btn left" id="x_name">Change my name</button><button class="btn primary" data-close>Got it</button></div>`);
+    $("x_name").onclick=()=>askName(false);
+  }else{
+    openModal(`<h2>Saved in this browser only</h2><p class="sub">This copy isn't connected to the shared project.</p>
+      <ul><li>Your project is stored in this browser on this device.</li><li>To code together, open the shared web app link from the project owner.</li><li>Use <b>Project → Export</b> regularly to keep a backup file.</li></ul>
+      <div class="modal-actions"><button class="btn primary" data-close>Got it</button></div>`);
+  }
+};
+
+/* ================= theme ================= */
+$("themeBtn").onclick=()=>{const cur=document.documentElement.getAttribute("data-theme");const dark=cur?cur==="dark":matchMedia("(prefers-color-scheme: dark)").matches;
+  const next=dark?"light":"dark";document.documentElement.setAttribute("data-theme",next);lsSet(KEY+"_theme",next);};
+$("addDocBtn").onclick=addDocModal;
+
+/* ================= modal & toast ================= */
+function openModal(html,opts){const r=$("modalRoot");ui.modalLocked=!!(opts&&opts.locked);
+  r.innerHTML=`<div class="overlay"><div class="modal" role="dialog" aria-modal="true">${html}</div></div>`;
+  r.querySelector(".overlay").addEventListener("mousedown",e=>{if(e.target.classList.contains("overlay"))closeModal();});
+  r.querySelectorAll("[data-close]").forEach(b=>b.onclick=()=>closeModal());
+  const first=r.querySelector("input:not([readonly]),textarea:not([readonly])");if(first)setTimeout(()=>first.focus(),30);}
+function closeModal(force){if(ui.modalLocked&&!force)return;ui.modalLocked=false;$("modalRoot").innerHTML="";}
+function confirmModal(title,msg,label,onYes,danger=true){
+  openModal(`<h2>${title}</h2><p class="sub" style="margin-bottom:20px">${msg}</p><div class="modal-actions"><button class="btn" data-close>Cancel</button><button class="btn ${danger?"danger":"primary"}" id="cfm">${label}</button></div>`);
+  $("cfm").onclick=()=>onYes();}
+let toastT;function toast(msg){const t=$("toast");t.textContent=msg;t.classList.add("show");clearTimeout(toastT);toastT=setTimeout(()=>t.classList.remove("show"),2400);}
+
+/* ================= boot ================= */
+function startLocal(){mode="local";status="local";const s=loadLocal();
+  state=s?{name:s.name||"Untitled project",documents:s.documents||[],codes:s.codes||[],quotations:(s.quotations||[]).map(q=>({...q,codeIds:q.codeIds||[]})),memos:s.memos||[]}:sampleProject();
+  if(!s)saveLocal();renderAll();}
+function boot(){
+  const t=lsGet(KEY+"_theme");if(t)document.documentElement.setAttribute("data-theme",t);
+  if(!SHARED){startLocal();return;}
+  mode="shared";state=emptyProject();state.name="Shared project";loadMe();if(me.id&&me.name)people[me.id]={name:me.name};
+  setStatus("connecting");renderAll();syncNow();
+}
+boot();
+</script>
+</body>
+</html>
