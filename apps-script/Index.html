@@ -116,6 +116,13 @@ section.view{flex:1 1 auto;min-height:0}
 #viewer mark.hl{background:color-mix(in srgb,var(--c) 26%,transparent);color:inherit;border-radius:3px;
   padding:.5px 0;cursor:pointer;box-shadow:inset 0 -2px 0 color-mix(in srgb,var(--c) 85%,transparent)}
 #viewer mark.hl:hover{background:color-mix(in srgb,var(--c) 42%,transparent)}
+/* passages coded by 2+ different people (Everyone view): hatched + dashed outline */
+#viewer mark.hl.shared{background-image:repeating-linear-gradient(-45deg,transparent 0 5px,color-mix(in srgb,var(--ink) 16%,transparent) 5px 7px);outline:1.5px dashed var(--ink);outline-offset:1px}
+#viewer mark.hl.flash{animation:ovflash 1.2s ease-out}
+@keyframes ovflash{0%,40%{outline:3px solid var(--accent);outline-offset:3px}}
+.ov-chip{border:1px solid var(--line);background:var(--paper);border-radius:20px;padding:3px 10px;font-size:12px;font-weight:600;color:var(--ink);display:inline-flex;align-items:center;gap:6px}
+.ov-chip:hover{border-color:var(--accent);color:var(--accent)}
+.ov-chip .ov-key{width:14px;height:11px;border-radius:2px;outline:1.5px dashed currentColor;outline-offset:-1.5px;background-image:repeating-linear-gradient(-45deg,transparent 0 3px,color-mix(in srgb,currentColor 35%,transparent) 3px 4px)}
 #viewer mark.hl.multi{box-shadow:inset 0 -2px 0 var(--c),inset 0 -5px 0 color-mix(in srgb,var(--c) 35%,transparent)}
 .empty{max-width:44ch;margin:10vh auto 0;text-align:center;color:var(--ink-soft);white-space:normal}
 .empty h2{font-size:17px;color:var(--ink);margin-bottom:8px}
@@ -278,6 +285,7 @@ table.matrix tr.total td{font-weight:700;background:var(--panel-2)}
           <span class="doc-title" id="viewerTitle">—</span>
           <span class="badge-ex" id="exBadge" hidden>example</span>
           <label class="coder-sel" id="coderWrap" hidden>Coder <select id="coderSel"></select></label>
+          <button type="button" class="ov-chip" id="ovChip" hidden title="Passages coded by more than one person. Click to jump to the next one."></button>
           <span class="hint" id="viewerHint">Select text to code it</span>
         </div>
         <div class="viewer-scroll"><div id="viewer"></div></div>
@@ -614,6 +622,7 @@ $("fileInput").onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new F
 /* ================= viewer + highlights ================= */
 function renderViewer(){
   const v=$("viewer");const d=docById(ui.currentDoc);
+  if(!d||ui.ovDoc!==d.id){ui.ovDoc=d&&d.id;ui.ovIdx=-1;ui.ovCount=0;renderOvChip();}
   $("exBadge").hidden=!(d&&d.example);
   if(!d){
     $("viewerTitle").textContent="—";
@@ -630,16 +639,30 @@ function renderViewer(){
   const L=d.content.length;const pts=new Set([0,L]);
   quotes.forEach(q=>{pts.add(Math.max(0,Math.min(L,q.start)));pts.add(Math.max(0,Math.min(L,q.end)));});
   const sorted=[...pts].sort((a,b)=>a-b);let html="";
+  const markShared=mode==="shared"&&!scopePerson();   // only meaningful when everyone's codings are visible
+  let runs=0,prevSharedEnd=-1;
   for(let i=0;i<sorted.length-1;i++){
     const s=sorted[i],e=sorted[i+1];if(e<=s)continue;const seg=d.content.slice(s,e);
     const cover=quotes.filter(q=>q.start<=s&&q.end>=e);
     if(!cover.length){html+=esc(seg);continue;}
     const first=cover[0];const code=codeById(first.codeIds[0]);const color=code?code.color:"#888";
-    html+=`<mark class="hl${cover.length>1||first.codeIds.length>1?" multi":""}" style="--c:${color}" data-q="${cover.map(c=>c.id).join(",")}">${esc(seg)}</mark>`;
+    const coders=markShared?[...new Set(cover.map(q=>q.by).filter(Boolean))]:[];
+    const shared=coders.length>1;let ov="";
+    if(shared){if(prevSharedEnd!==s)ov=` data-ov="${runs++}"`;prevSharedEnd=e;}
+    const tip=shared?` title="Coded by ${esc(coders.map(rawName).join(", "))}"`:"";
+    html+=`<mark class="hl${cover.length>1||first.codeIds.length>1?" multi":""}${shared?" shared":""}" style="--c:${color}" data-q="${cover.map(c=>c.id).join(",")}"${ov}${tip}>${esc(seg)}</mark>`;
   }
   v.innerHTML=html;
+  ui.ovCount=runs;if(!(ui.ovIdx<runs))ui.ovIdx=-1;renderOvChip();
   v.querySelectorAll("mark.hl").forEach(m=>{m.onclick=ev=>{ev.stopPropagation();openQuotationInspector(m.getAttribute("data-q").split(","));};});
 }
+function renderOvChip(){
+  const b=$("ovChip"),n=ui.ovCount||0;b.hidden=!n;if(!n)return;
+  b.innerHTML=`<span class="ov-key"></span>${ui.ovIdx>=0?(ui.ovIdx+1)+" / ":""}${n} overlap${n>1?"s":""}`;
+}
+$("ovChip").onclick=()=>{const n=ui.ovCount||0;if(!n)return;ui.ovIdx=(ui.ovIdx+1)%n;renderOvChip();
+  const m=$("viewer").querySelector(`mark[data-ov="${ui.ovIdx}"]`);if(!m)return;
+  m.scrollIntoView({behavior:"smooth",block:"center"});m.classList.remove("flash");void m.offsetWidth;m.classList.add("flash");};
 let pendingSel=null,lastXY={x:0,y:0};
 const viewerEl=$("viewer");
 viewerEl.addEventListener("mousedown",()=>{ui.dragging=true;});
