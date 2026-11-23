@@ -143,6 +143,9 @@ section.view{flex:1 1 auto;min-height:0}
 .swatch{width:13px;height:13px;border-radius:4px;flex:none;box-shadow:inset 0 0 0 1px rgba(0,0,0,.12);display:inline-block}
 .code-item .nm{font-weight:600;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .code-item .cnt{font-size:11px;color:var(--ink-soft);font-weight:700;min-width:20px;text-align:right;font-variant-numeric:tabular-nums}
+.code-item .clr{border:none;background:transparent;color:var(--ink-soft);padding:0 4px;border-radius:4px;font-size:12px}
+.code-item .clr:hover{color:var(--danger);background:var(--panel)}
+.code-item.filtered .cnt{color:var(--accent);min-width:34px}
 .code-item .edit{opacity:0;border:none;background:transparent;color:var(--ink-soft);padding:2px;border-radius:4px}
 .code-item:hover .edit,.code-item .edit:focus-visible{opacity:1} .code-item .edit:hover{color:var(--accent)}
 .grp-label{font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-soft);font-weight:700;padding:10px 9px 4px}
@@ -343,7 +346,7 @@ const SHARED=IN_GAS||!!API_URL;
 const $=id=>document.getElementById(id);
 
 let state=emptyProject();
-let ui={view:"code",currentDoc:null,codeFilter:null,search:"",memoId:null,coder:"all",mine:lsGet(KEY+"_mine")==="1",dragging:false,renderAfterDrag:false,modalLocked:false};
+let ui={view:"code",currentDoc:null,codeFilter:null,codeIdx:-1,search:"",memoId:null,coder:"all",mine:lsGet(KEY+"_mine")==="1",dragging:false,renderAfterDrag:false,modalLocked:false};
 let mode="connecting";   // connecting | shared | local
 let status="connecting"; // connecting | live | offline | locked | local
 const readOnly=false;
@@ -767,12 +770,29 @@ function renderCodes(){
     groups[g].sort((a,b)=>(counts[b.id]||0)-(counts[a.id]||0)||a.name.localeCompare(b.name));
     groups[g].forEach(c=>{
       const row=document.createElement("div");row.className="code-item"+(ui.codeFilter===c.id?" filtered":"");row.title=c.memo||"";
-      row.innerHTML=`<span class="swatch" style="background:${c.color}"></span><span class="nm">${esc(c.name)}</span><span class="cnt">${counts[c.id]||0}</span><button class="edit" title="Edit code" aria-label="Edit code">✎</button>`;
-      row.onclick=()=>{ui.codeFilter=ui.codeFilter===c.id?null:c.id;renderCodes();renderViewer();if(ui.codeFilter)toast("Showing only “"+c.name+"”");};
+      const sel=ui.codeFilter===c.id,occ=sel?codeOccurrences(c.id).length:0;
+      const cnt=sel&&occ&&ui.codeIdx>=0?`${Math.min(ui.codeIdx,occ-1)+1}/${occ}`:counts[c.id]||0;
+      row.title=(c.memo?c.memo+"\n\n":"")+(sel?"Click again for the next passage":"Click to jump to passages with this code");
+      row.innerHTML=`<span class="swatch" style="background:${c.color}"></span><span class="nm">${esc(c.name)}</span><span class="cnt">${cnt}</span>${sel?'<button class="clr" title="Stop filtering by this code" aria-label="Clear code filter">✕</button>':""}<button class="edit" title="Edit code" aria-label="Edit code">✎</button>`;
+      row.onclick=()=>jumpToCode(c);
+      const clr=row.querySelector(".clr");if(clr)clr.onclick=e=>{e.stopPropagation();ui.codeFilter=null;ui.codeIdx=-1;renderCodes();renderViewer();};
       row.querySelector(".edit").onclick=e=>{e.stopPropagation();editCodeModal(c.id);};
       el.appendChild(row);
     });
   });
+}
+/* click a code: filter to it and jump to its first passage; click again for the next one (across documents) */
+function codeOccurrences(cid){const order=new Map(state.documents.map((d,i)=>[d.id,i]));
+  return visibleQuotes().filter(q=>q.codeIds.includes(cid)&&order.has(q.docId)).sort((a,b)=>order.get(a.docId)-order.get(b.docId)||a.start-b.start||a.end-b.end)}
+function jumpToCode(c){
+  const occ=codeOccurrences(c.id);
+  if(ui.codeFilter!==c.id){ui.codeFilter=c.id;ui.codeIdx=0;}else ui.codeIdx=occ.length?(ui.codeIdx+1)%occ.length:0;
+  if(!occ.length){renderCodes();renderViewer();toast("No passages coded “"+c.name+"” in this view yet");return;}
+  const q=occ[ui.codeIdx];const switched=ui.currentDoc!==q.docId;ui.currentDoc=q.docId;
+  renderDocs();renderViewer();renderCodes();
+  const m=[...$("viewer").querySelectorAll("mark.hl")].find(x=>x.getAttribute("data-q").split(",").includes(q.id));
+  if(m){m.scrollIntoView({behavior:switched?"auto":"smooth",block:"center"});m.classList.remove("flash");void m.offsetWidth;m.classList.add("flash");}
+  const d=docById(q.docId);toast(`“${c.name}” ${ui.codeIdx+1} / ${occ.length}${d&&state.documents.length>1?" · "+d.name:""}`);
 }
 $("codeSearch").addEventListener("input",e=>{ui.search=e.target.value;renderCodes();});
 $("addCodeBtn").onclick=()=>{if(requireName())editCodeModal(null);};

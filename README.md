@@ -24,7 +24,7 @@ Qualia Coder covers that core workflow. Coworkers open one link in a browser, ty
 ## Features
 
 - **Code transcripts.** Select any passage to tag it with one or more codes, then add comments and memos.
-- **Codebook.** Codes have colours, groups and written definitions, and the whole team shares one codebook.
+- **Codebook.** Codes have colours, groups and written definitions, and the whole team shares one codebook. Click a code to jump to its passages; click again for the next one, across documents.
 - **Real-time-ish collaboration.** Every edit syncs to the team within about 4 seconds, and each quotation records who coded it.
 - **Code on your own.** Switch the codebook to **Mine** to hide teammates' codes and highlights while you do your own thematic analysis, or pick one person to see only their codes. Switch back to **All** to compare.
 - **Spot shared passages.** In the Everyone view, text coded by two or more people is hatched with a dashed outline. Click the overlap counter to jump from one to the next.
