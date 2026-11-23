@@ -162,9 +162,14 @@ section.view{flex:1 1 auto;min-height:0}
 #codePopup .pcode.on{background:var(--accent-soft)}
 #codePopup .pcode .ck{margin-left:auto;color:var(--accent);font-weight:600;opacity:0}
 #codePopup .pcode.on .ck{opacity:1}
-#codePopup .newrow{display:flex;gap:8px;margin-top:8px;border-top:1px solid var(--line);padding-top:8px}
-#codePopup .newrow input{flex:1;min-width:0;border:1px solid var(--line);background:var(--panel);border-radius:var(--r-sm);padding:6px 8px}
-#codePopup .newrow input:focus{outline:none;border-color:var(--accent)}
+#codePopup .pquery{width:100%;border:1px solid var(--line);background:var(--panel);border-radius:var(--r-sm);padding:6px 10px;margin:0 0 8px;transition:border-color .15s}
+#codePopup .pquery:focus{outline:none;border-color:var(--accent)}
+#codePopup .pcode.kb{background:var(--panel-2);box-shadow:inset 0 0 0 1px var(--line-strong)}
+#codePopup .pcode.on.kb{background:var(--accent-soft)}
+#codePopup .pname{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500}
+#codePopup .pnew{color:var(--accent)}
+#codePopup .pplus{width:12px;text-align:center;font-weight:600;flex:none}
+#codePopup .phint{font-size:11px;color:var(--ink-soft);margin-top:8px;padding-top:8px;border-top:1px solid var(--line)}
 
 .overlay{position:fixed;inset:0;background:rgba(15,17,20,.4);z-index:60;display:grid;place-items:center;padding:20px}
 .modal{background:var(--panel);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);width:min(500px,100%);max-height:86vh;overflow:auto;padding:24px}
@@ -702,22 +707,49 @@ function handleSelection(){
 /* ================= code popup ================= */
 function pendingQuote(){return pendingSel&&pendingSel.qid?state.quotations.find(q=>q.id===pendingSel.qid):null}
 function openCodePopup(){
-  const pop=$("codePopup");const pq=pendingQuote();const applied=pq?pq.codeIds:[];
-  const mine=mineOnly()?myCodeIds():null;const shown=mine?state.codes.filter(c=>applied.includes(c.id)||mine.has(c.id)):state.codes;
-  const list=shown.length?shown.map(c=>`<div class="pcode${applied.includes(c.id)?" on":""}" data-id="${c.id}" role="button" tabindex="0"><span class="swatch" style="background:${c.color}"></span><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600">${esc(c.name)}</span><span class="ck">✓</span></div>`).join("")
-    :`<div class="muted" style="padding:6px 8px;font-size:12.5px">No codes yet. Create one below.</div>`;
-  pop.innerHTML=`<div class="ph">Apply codes <button class="btn ghost sm" data-popclose style="margin-left:auto;padding:1px 7px">Done</button></div>
-    <div class="pquote">${esc(pendingSel.text.slice(0,120))}${pendingSel.text.length>120?"…":""}</div><div class="plist">${list}</div>
-    <div class="newrow"><input id="newCodeName" maxlength="120" placeholder="New code name…" aria-label="New code name"><button class="btn primary sm" id="newCodeGo">Add</button></div>`;
+  const pop=$("codePopup");
+  const mine=mineOnly()?myCodeIds():null;
+  const applied=()=>(pendingQuote()||{codeIds:[]}).codeIds;
+  const pool=mine?state.codes.filter(c=>applied().includes(c.id)||mine.has(c.id)):state.codes;
+  pop.innerHTML=`<div class="ph">Apply codes <button class="btn ghost sm" data-popclose style="margin-left:auto;padding:2px 8px">Done</button></div>
+    <div class="pquote">${esc(pendingSel.text.slice(0,120))}${pendingSel.text.length>120?"…":""}</div>
+    <input id="codeQuery" class="pquery" maxlength="120" placeholder="Search or create a code" aria-label="Search or create a code" autocomplete="off">
+    <div class="plist" id="plist"></div><div class="phint">↑↓ to choose · Enter to apply · Esc to close</div>`;
   pop.hidden=false;
+  const inp=$("codeQuery"),listEl=$("plist");let kb=-1,rows=[];
+  // search: name or group contains the query; names starting with it come first
+  function matches(q){if(!q)return pool;const s=q.toLowerCase();
+    return pool.filter(c=>c.name.toLowerCase().includes(s)||(c.group||"").toLowerCase().includes(s))
+      .sort((a,b)=>(b.name.toLowerCase().startsWith(s))-(a.name.toLowerCase().startsWith(s)));}
+  function draw(){
+    const q=inp.value.trim(),list=matches(q),on=applied();
+    const exact=q&&state.codes.some(c=>c.name.toLowerCase()===q.toLowerCase());
+    rows=list.map(c=>({type:"code",c}));if(q&&!exact)rows.push({type:"new",name:q});
+    if(!rows.length){listEl.innerHTML=`<div class="muted" style="padding:8px;font-size:12.5px">${pool.length?"":"No codes yet. Type a name to create one."}</div>`;kb=-1;return;}
+    if(kb>=rows.length)kb=rows.length-1;if(q&&kb<0)kb=0;
+    listEl.innerHTML=rows.map((r,i)=>r.type==="code"
+      ?`<div class="pcode${on.includes(r.c.id)?" on":""}${i===kb?" kb":""}" data-i="${i}" role="button" tabindex="-1"><span class="swatch" style="background:${r.c.color}"></span><span class="pname">${esc(r.c.name)}</span><span class="ck">✓</span></div>`
+      :`<div class="pcode pnew${i===kb?" kb":""}" data-i="${i}" role="button" tabindex="-1"><span class="pplus">+</span><span class="pname">Create “${esc(r.name)}”</span></div>`).join("");
+    listEl.querySelectorAll(".pcode").forEach(el=>{el.onclick=()=>pick(+el.getAttribute("data-i"),false);});
+    const k=listEl.querySelector(".kb");if(k)k.scrollIntoView({block:"nearest"});
+  }
+  // mouse click on an existing code toggles it and keeps the popup open (several codes per passage);
+  // Enter applies the highlighted code, or creates the new one, and closes the popup
+  function pick(i,viaKey){const r=rows[i];if(!r)return;
+    if(r.type==="new"){const c=createCode(r.name);toggleCodeOnPending(c.id,true);closeCodePopup();toast("Coded as “"+r.name+"”");return;}
+    if(viaKey){toggleCodeOnPending(r.c.id,true);closeCodePopup();toast("Coded as “"+r.c.name+"”");return;}
+    toggleCodeOnPending(r.c.id);draw();}
+  draw();
   const w=pop.offsetWidth,h=pop.offsetHeight;let x=lastXY.x+6,y=lastXY.y+8;
   if(x+w>innerWidth-10)x=innerWidth-w-10;if(x<10)x=10;if(y+h>innerHeight-10)y=lastXY.y-h-8;if(y<10)y=10;
   pop.style.left=x+"px";pop.style.top=y+"px";
-  pop.querySelectorAll(".pcode").forEach(el=>{el.onclick=()=>toggleCodeOnPending(el.getAttribute("data-id"));el.onkeydown=e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();el.click();}};});
   pop.querySelector("[data-popclose]").onclick=closeCodePopup;
-  const inp=$("newCodeName");
-  $("newCodeGo").onclick=()=>{const nm=inp.value.trim();if(!nm)return;const c=createCode(nm);toggleCodeOnPending(c.id,true);closeCodePopup();toast("Coded as “"+nm+"”");};
-  inp.addEventListener("keydown",e=>{if(imeBusy(e))return;if(e.key==="Enter"){e.preventDefault();$("newCodeGo").click();}if(e.key==="Escape")closeCodePopup();});
+  inp.addEventListener("input",()=>{kb=inp.value.trim()?0:-1;draw();});
+  inp.addEventListener("keydown",e=>{if(imeBusy(e))return;
+    if(e.key==="ArrowDown"||e.key==="ArrowUp"){e.preventDefault();if(!rows.length)return;kb=e.key==="ArrowDown"?(kb+1)%rows.length:(kb<=0?rows.length-1:kb-1);draw();}
+    else if(e.key==="Enter"){e.preventDefault();if(kb>=0)pick(kb,true);}
+    else if(e.key==="Escape")closeCodePopup();});
+  setTimeout(()=>inp.focus({preventScroll:true}),0);
 }
 function closeCodePopup(){$("codePopup").hidden=true;pendingSel=null;const s=window.getSelection();if(s)s.removeAllRanges();}
 document.addEventListener("mousedown",e=>{const pop=$("codePopup");if(!pop.hidden&&!pop.contains(e.target)&&!viewerEl.contains(e.target))closeCodePopup();});
@@ -737,7 +769,7 @@ function toggleCodeOnPending(codeId,forceOn){
   if(has&&!forceOn)q.codeIds=q.codeIds.filter(x=>x!==codeId);else if(!has)q.codeIds.push(codeId);
   if(q.codeIds.length)put("quotations",q);else if(state.quotations.some(x=>x.id===q.id))del("quotations",q.id);
   const now=(pendingQuote()||{codeIds:[]}).codeIds;
-  $("codePopup").querySelectorAll(".pcode").forEach(el=>el.classList.toggle("on",now.includes(el.getAttribute("data-id"))));
+  $("codePopup").querySelectorAll(".pcode[data-id]").forEach(el=>el.classList.toggle("on",now.includes(el.getAttribute("data-id"))));
 }
 
 /* ================= codebook ================= */
