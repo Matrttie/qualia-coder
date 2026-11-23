@@ -339,6 +339,8 @@ let people={};           // coderId -> {name}
 
 function uid(p){return p+Date.now().toString(36)+Math.random().toString(36).slice(2,8)}
 function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[m]))}
+// true while an input method (Chinese/Japanese/Korean IME) is still composing; Enter/Escape then belong to the IME
+function imeBusy(e){return e.isComposing||e.keyCode===229}
 function lsGet(k){try{return localStorage.getItem(k)}catch(e){return null}}
 function lsSet(k,v){try{localStorage.setItem(k,v)}catch(e){}}
 function codeById(id){return state.codes.find(c=>c.id===id)}
@@ -381,7 +383,7 @@ function askName(first){
     if(!me.id)me.id=uid("u");me.name=v;lsSet(ME_KEY,JSON.stringify(me));
     people[me.id]={name:v};queueWrite("people/"+me.id,{name:v,at:Date.now()});
     closeModal(true);renderAll();toast("Coding as "+v);};
-  $("n_save").onclick=go;$("n_name").addEventListener("keydown",e=>{if(e.key==="Enter")go();});
+  $("n_save").onclick=go;$("n_name").addEventListener("keydown",e=>{if(e.key==="Enter"&&!imeBusy(e))go();});
 }
 
 /* ================= sample project ================= */
@@ -503,7 +505,7 @@ function askPasscode(){
     <div class="field"><label for="p_code">Passcode</label><input type="password" id="p_code" autocomplete="off"></div>
     <div class="modal-actions"><button class="btn primary" id="p_go">Open project</button></div>`,{locked:true});
   const go=()=>{lsSet(PASS_KEY,$("p_code").value);closeModal(true);setStatus("connecting");syncNow();};
-  $("p_go").onclick=go;$("p_code").addEventListener("keydown",e=>{if(e.key==="Enter")go();});
+  $("p_go").onclick=go;$("p_code").addEventListener("keydown",e=>{if(e.key==="Enter"&&!imeBusy(e))go();});
 }
 function rebuild(){
   const v={};for(const k in raw)v[k]={...raw[k]};
@@ -674,12 +676,12 @@ function openCodePopup(){
   pop.querySelectorAll(".pcode").forEach(el=>{el.onclick=()=>toggleCodeOnPending(el.getAttribute("data-id"));el.onkeydown=e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();el.click();}};});
   pop.querySelector("[data-popclose]").onclick=closeCodePopup;
   const inp=$("newCodeName");
-  $("newCodeGo").onclick=()=>{const nm=inp.value.trim();if(!nm)return;const c=createCode(nm);toggleCodeOnPending(c.id,true);openCodePopup();const i2=$("newCodeName");if(i2)i2.focus();};
-  inp.addEventListener("keydown",e=>{if(e.key==="Enter")$("newCodeGo").click();if(e.key==="Escape")closeCodePopup();});
+  $("newCodeGo").onclick=()=>{const nm=inp.value.trim();if(!nm)return;const c=createCode(nm);toggleCodeOnPending(c.id,true);closeCodePopup();toast("Coded as “"+nm+"”");};
+  inp.addEventListener("keydown",e=>{if(imeBusy(e))return;if(e.key==="Enter"){e.preventDefault();$("newCodeGo").click();}if(e.key==="Escape")closeCodePopup();});
 }
 function closeCodePopup(){$("codePopup").hidden=true;pendingSel=null;const s=window.getSelection();if(s)s.removeAllRanges();}
 document.addEventListener("mousedown",e=>{const pop=$("codePopup");if(!pop.hidden&&!pop.contains(e.target)&&!viewerEl.contains(e.target))closeCodePopup();});
-document.addEventListener("keydown",e=>{if(e.key==="Escape"){if(!$("codePopup").hidden)closeCodePopup();else if($("modalRoot").innerHTML)closeModal();}});
+document.addEventListener("keydown",e=>{if(e.key==="Escape"&&!imeBusy(e)){if(!$("codePopup").hidden)closeCodePopup();else if($("modalRoot").innerHTML)closeModal();}});
 function createCode(name,color,group,memo){
   const used=state.codes.map(c=>c.color);const col=color||PALETTE.find(p=>!used.includes(p))||PALETTE[state.codes.length%PALETTE.length];
   const c={id:uid("c"),name,color:col,group:group||"",memo:memo||"",by:myBy(),at:Date.now()};put("codes",c);return c;
