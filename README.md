@@ -110,6 +110,13 @@ index.html       generated team app (do not edit by hand)
 
 I designed and built this with [Claude Code](https://claude.com/claude-code) as a pair programmer. I wrote the product requirements, made the architecture and security decisions, and drove the testing. Claude wrote most of the code under that direction. The commit history is the honest record.
 
+## Team
+
+| | |
+|---|---|
+| [**Chingwei Chen**](https://github.com/Matrttie) | Project lead: product, architecture, testing |
+| [**morristan10**](https://github.com/morristan10) | Collaborator |
+
 ## Licence
 
 [MIT](LICENSE) © 2026 Chingwei Chen
