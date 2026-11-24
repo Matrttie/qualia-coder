@@ -88,10 +88,23 @@ h1,h2,h3{font-family:var(--display);font-weight:600;margin:0;text-wrap:balance}
 main{flex:1 1 auto;min-height:0;display:flex;flex-direction:column}
 section.view{flex:1 1 auto;min-height:0}
 
-.workspace{display:grid;grid-template-columns:240px minmax(0,1fr) 300px;height:100%;min-height:0}
+.workspace{display:grid;grid-template-columns:240px minmax(0,1fr) var(--cbw,360px);height:100%;min-height:0}
 .col{min-height:0;min-width:0;display:flex;flex-direction:column;background:var(--panel)}
 .col.docs{border-right:1px solid var(--line)}
-.col.codes{border-left:1px solid var(--line)}
+.col.codes{border-left:1px solid var(--line);position:relative}
+/* drag the codebook's left edge to resize it; double-click resets */
+.cb-resize{position:absolute;left:-4px;top:0;bottom:0;width:8px;cursor:col-resize;z-index:5}
+.cb-resize::after{content:"";position:absolute;left:3px;top:0;bottom:0;width:2px;background:transparent;transition:background-color .15s}
+.cb-resize:hover::after,body.resizing .cb-resize::after{background:var(--accent)}
+body.resizing{cursor:col-resize;user-select:none}
+/* hover card with a code's full text */
+#codeCard{position:fixed;z-index:70;width:340px;max-height:70vh;overflow:auto;background:var(--panel);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow);padding:12px 16px;font-size:13px;line-height:1.6;pointer-events:none}
+#codeCard .cc-name{display:flex;gap:8px;align-items:flex-start;font-weight:600;font-size:14px;line-height:1.45;margin-bottom:4px}
+#codeCard .cc-name .swatch{margin-top:4px}
+#codeCard .cc-meta{font-size:12px;color:var(--ink-soft);margin-bottom:8px}
+#codeCard .cc-sec{margin-top:8px}
+#codeCard .cc-sec b{display:block;font-size:11.5px;font-weight:500;color:var(--ink-soft)}
+#codeCard .cc-sec div{white-space:pre-wrap}
 .col-head{display:flex;align-items:center;gap:8px;padding:0 16px;min-height:48px;border-bottom:1px solid var(--line);flex:none}
 .col-head h3{font-size:13px;color:var(--ink);font-family:var(--font);font-weight:600}
 .col-head .count{margin-left:auto;font-family:var(--mono);font-size:12px;color:var(--ink-soft);font-variant-numeric:tabular-nums}
@@ -274,6 +287,7 @@ table.matrix tr.total td{font-weight:500;background:none;border-top:1px solid va
   .workspace{grid-template-columns:minmax(0,1fr);grid-template-rows:auto auto auto;height:auto}
   section.view{overflow:auto}
   .col.docs,.col.codes{border:none;border-bottom:1px solid var(--line)}
+  .cb-resize{display:none}
   .col-body{max-height:34vh}
   .viewer-wrap{min-height:52vh}
   .memo-layout{grid-template-columns:minmax(0,1fr)}
@@ -322,6 +336,7 @@ table.matrix tr.total td{font-weight:500;background:none;border-top:1px solid va
         <div class="viewer-scroll" id="viewerScroll"><div id="viewer"></div></div>
       </div>
       <aside class="col codes">
+        <div class="cb-resize" id="cbResize" title="Drag to resize · double-click to reset"></div>
         <div class="col-head"><h3>Codebook</h3>
           <div class="scope" id="cbScope" role="group" aria-label="Whose codes to show" hidden>
             <button type="button" data-scope="all" aria-pressed="true" title="Show everyone's codes and codings">All</button>
@@ -355,6 +370,7 @@ table.matrix tr.total td{font-weight:500;background:none;border-top:1px solid va
 
 <div id="codePopup" hidden></div>
 <div id="modalRoot"></div>
+<div id="codeCard" hidden></div>
 <div id="toast" role="status" aria-live="polite"></div>
 <input type="file" id="fileInput" accept=".txt,.md,.text" hidden>
 <input type="file" id="projInput" accept=".json,application/json" hidden>
@@ -773,9 +789,9 @@ function openCodePopup(){
     if(kb>=rows.length)kb=rows.length-1;if((q||nRecent)&&kb<0)kb=0;
     const label=i=>nRecent&&i===0?'<div class="plabel">Recent</div>':nRecent&&i===nRecent?'<div class="plabel">All codes</div>':"";
     listEl.innerHTML=rows.map((r,i)=>label(i)+(r.type==="code"
-      ?`<div class="pcode${on.includes(r.c.id)?" on":""}${i===kb?" kb":""}" data-i="${i}" role="button" tabindex="-1"><span class="swatch" style="background:${r.c.color}"></span><span class="pname" title="${esc(codeTip(r.c))}">${codeLabelHTML(r.c)}</span><span class="ck">✓</span></div>`
+      ?`<div class="pcode${on.includes(r.c.id)?" on":""}${i===kb?" kb":""}" data-i="${i}" role="button" tabindex="-1"><span class="swatch" style="background:${r.c.color}"></span><span class="pname">${codeLabelHTML(r.c)}</span><span class="ck">✓</span></div>`
       :`<div class="pcode pnew${i===kb?" kb":""}" data-i="${i}" role="button" tabindex="-1"><span class="pplus">+</span><span class="pname">Create “${esc(r.name)}”</span></div>`)).join("");
-    listEl.querySelectorAll(".pcode").forEach(el=>{el.onclick=()=>pick(+el.getAttribute("data-i"),false);});
+    listEl.querySelectorAll(".pcode").forEach(el=>{el.onclick=()=>pick(+el.getAttribute("data-i"),false);const r=rows[+el.getAttribute("data-i")];if(r&&r.type==="code")attachCodeCard(el,r.c);});
     const k=listEl.querySelector(".kb");if(k)k.scrollIntoView({block:"nearest"});
   }
   // mouse click on an existing code toggles it and keeps the popup open (several codes per passage);
@@ -797,7 +813,7 @@ function openCodePopup(){
     else if(e.key==="Escape")closeCodePopup();});
   setTimeout(()=>inp.focus({preventScroll:true}),0);
 }
-function closeCodePopup(){$("codePopup").hidden=true;pendingSel=null;const s=window.getSelection();if(s)s.removeAllRanges();}
+function closeCodePopup(){hideCodeCard();$("codePopup").hidden=true;pendingSel=null;const s=window.getSelection();if(s)s.removeAllRanges();}
 document.addEventListener("mousedown",e=>{const pop=$("codePopup");if(!pop.hidden&&!pop.contains(e.target)&&!viewerEl.contains(e.target))closeCodePopup();});
 document.addEventListener("keydown",e=>{if(e.key==="Escape"&&!imeBusy(e)){if(!$("codePopup").hidden)closeCodePopup();else if($("modalRoot").innerHTML)closeModal();}});
 /* a code's codebook: the name it was imported under, else the person who created it */
@@ -882,7 +898,7 @@ function renderCodes(){
       const row=document.createElement("div");row.className="code-item"+(ui.codeFilter===c.id?" filtered":"");row.title=c.memo||"";
       const sel=ui.codeFilter===c.id,occ=sel?codeOccurrences(c.id).length:0;
       const cnt=sel&&occ&&ui.codeIdx>=0?`${Math.min(ui.codeIdx,occ-1)+1}/${occ}`:counts[c.id]||0;
-      row.title=(codeTip(c)?codeTip(c)+"\n\n":"")+(sel?"Click again for the next passage":"Click to jump to passages with this code");
+      attachCodeCard(row,c);
       const bk=showBook&&bookOf(c)?`<span class="btag" title="Codebook: ${esc(bookOf(c))}">${esc(bookOf(c))}</span>`:"";
       row.innerHTML=`<span class="swatch" style="background:${c.color}"></span><span class="nm">${codeLabelHTML(c)}</span>${bk}<span class="cnt">${cnt}</span>${sel?'<button class="clr" title="Stop filtering by this code" aria-label="Clear code filter">✕</button>':""}<button class="edit" title="Edit code" aria-label="Edit code">✎</button>`;
       row.onclick=()=>jumpToCode(c);
@@ -907,6 +923,41 @@ function jumpToCode(c){
 }
 $("codeSearch").addEventListener("input",e=>{ui.search=e.target.value;renderCodes();});
 $("addCodeBtn").onclick=()=>{if(requireName())editCodeModal(null);};
+
+/* hover card: full name, codebook, definition and rules of a code */
+let cardT=null;
+function hideCodeCard(){clearTimeout(cardT);$("codeCard").hidden=true;}
+function attachCodeCard(el,c){
+  el.addEventListener("mouseenter",()=>{clearTimeout(cardT);cardT=setTimeout(()=>showCodeCard(el,c),250);});
+  el.addEventListener("mouseleave",hideCodeCard);el.addEventListener("mousedown",hideCodeCard);}
+function showCodeCard(el,c){
+  if(!el.isConnected||!codeById(c.id))return;c=codeById(c.id);
+  const n=state.quotations.filter(q=>q.codeIds.includes(c.id)).length;
+  const sec=(t,v)=>v?`<div class="cc-sec"><b>${t}</b><div>${esc(v)}</div></div>`:"";
+  const meta=[bookOf(c),c.group,c.theme&&"Theme "+c.theme,n+" passage"+(n===1?"":"s")].filter(Boolean).map(esc).join(" · ");
+  const card=$("codeCard");
+  card.innerHTML=`<div class="cc-name"><span class="swatch" style="background:${c.color}"></span><span>${codeLabelHTML(c)}</span></div><div class="cc-meta">${meta}</div>`
+    +sec("Definition",c.memo)+sec("Include when",c.include)+sec("Exclude / boundary",c.exclude)+sec("Source",c.source);
+  card.hidden=false;
+  const r=el.getBoundingClientRect(),w=card.offsetWidth,h=card.offsetHeight;
+  let x=r.left-w-8;if(x<8)x=Math.min(r.right+8,innerWidth-w-8);     // prefer the left side (codebook is on the right)
+  let y=Math.max(8,Math.min(r.top,innerHeight-h-8));
+  card.style.left=x+"px";card.style.top=y+"px";
+}
+document.addEventListener("scroll",hideCodeCard,true);
+
+/* resizable codebook column, remembered per browser */
+(function(){const ws=document.querySelector(".workspace"),h=$("cbResize");if(!ws||!h)return;
+  const clamp=w=>Math.max(260,Math.min(Math.round(w),Math.min(720,innerWidth-560)));
+  const set=w=>ws.style.setProperty("--cbw",clamp(w)+"px");
+  const saved=+lsGet(KEY+"_cbw");if(saved)set(saved);
+  h.addEventListener("mousedown",e=>{e.preventDefault();document.body.classList.add("resizing");hideCodeCard();
+    const move=ev=>set(innerWidth-ev.clientX);
+    const up=()=>{document.body.classList.remove("resizing");removeEventListener("mousemove",move);removeEventListener("mouseup",up);
+      lsSet(KEY+"_cbw",parseInt(getComputedStyle(ws).getPropertyValue("--cbw"))||360);};
+    addEventListener("mousemove",move);addEventListener("mouseup",up);});
+  h.addEventListener("dblclick",()=>{ws.style.removeProperty("--cbw");lsSet(KEY+"_cbw","");});
+})();
 
 /* ================= codebook import / export ================= */
 // Reads the team's Markdown codebook (tables under "### group" headings, columns 代號 · 代碼名稱 · 定義 · 納入規則 ·
