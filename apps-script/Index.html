@@ -255,6 +255,18 @@ table.matrix td.ag-mid{color:var(--warn);font-weight:500}
 table.matrix td.ag-lo{color:var(--danger);font-weight:500}
 table.matrix tr.total td{font-weight:500;background:none;border-top:1px solid var(--line-strong)}
 .matrix-scroll{overflow-x:auto}
+.ov-list{display:flex;flex-direction:column}
+.ov-row{padding:12px 8px;border-bottom:1px solid var(--line);cursor:pointer;border-radius:var(--r-sm);transition:background-color .15s}
+.ov-row:last-child{border-bottom:none}
+.ov-row:hover{background:var(--panel-2)}
+.ov-top{display:flex;align-items:center;gap:8px;margin-bottom:4px}
+.ov-doc{font-weight:600;font-size:13px}
+.ov-tag{font-size:11px;font-weight:500;border-radius:4px;padding:0 6px;line-height:18px}
+.ov-tag.ok{color:var(--good);background:color-mix(in srgb,var(--good) 12%,transparent)}
+.ov-tag.diff{color:var(--warn);background:color-mix(in srgb,var(--warn) 14%,transparent)}
+.ov-text{font-size:13.5px;line-height:1.6;color:var(--ink);margin-bottom:8px;border-left:2px solid var(--line-strong);padding-left:8px}
+.ov-who{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12.5px;margin-top:4px}
+.ov-who .who{min-width:84px}
 .cooc-row{display:flex;align-items:center;gap:12px;min-height:40px;padding:4px 0;border-bottom:1px solid var(--line);font-size:13px}
 .cooc-row:last-child{border:none}
 .cooc-pair{display:flex;align-items:center;gap:8px;flex:1;flex-wrap:wrap;min-width:0}
@@ -1153,7 +1165,7 @@ function renderAnalyze(){
     const cxHead=`<tr><th class="rowh">Code</th>${coders.map(u=>`<th>${esc(personName(u))}</th>`).join("")}</tr>`;
     const cxRows=freq.map(f=>`<tr><td class="rowh"><span class="swatch" style="vertical-align:-1px;margin-right:6px;background:${f.c.color}"></span>${esc(f.c.name)}</td>${coders.map(u=>{const n=state.quotations.filter(q=>q.by===u&&q.codeIds.includes(f.c.id)).length;return `<td class="${n?"":"v0"}">${n||"·"}</td>`;}).join("")}</tr>`).join("");
     coderCards=`<div class="card"><h3>Coders</h3><p class="ch-sub">Who coded what. Each quotation records the person who made it.</p><div class="matrix-scroll"><table class="matrix"><thead><tr><th class="rowh">Coder</th><th>Quotations</th><th>Code applications</th><th>Documents</th></tr></thead><tbody>${crow}</tbody></table></div></div>
-      <div class="card"><h3>Code use by coder</h3><p class="ch-sub">How often each coder applied each code. Big gaps in a row often point to a code definition worth discussing.</p><div class="matrix-scroll"><table class="matrix"><thead>${cxHead}</thead><tbody>${cxRows}</tbody></table></div></div>`+agreementCard(coders);
+      <div class="card"><h3>Code use by coder</h3><p class="ch-sub">How often each coder applied each code. Big gaps in a row often point to a code definition worth discussing.</p><div class="matrix-scroll"><table class="matrix"><thead>${cxHead}</thead><tbody>${cxRows}</tbody></table></div></div>`+agreementCard(coders)+overlapCard();
   }
   w.innerHTML=`<h1 class="view-title">Analysis</h1><p class="view-sub">Patterns across ${mode==="shared"?"everyone's":"your"} coded data. Updates as you code.</p>
     <div class="stat-row"><div class="stat"><div class="n">${state.documents.length}</div><div class="l">Documents</div></div><div class="stat"><div class="n">${state.codes.length}</div><div class="l">Codes</div></div>
@@ -1176,6 +1188,46 @@ function mergeIv(iv){iv.sort((a,b)=>a[0]-b[0]);const o=[];for(const[s,e]of iv){i
 function ivLen(iv){return iv.reduce((a,[s,e])=>a+e-s,0)}
 function ivInter(A,B){let i=0,j=0,t=0;while(i<A.length&&j<B.length){const s=Math.max(A[i][0],B[j][0]),e=Math.min(A[i][1],B[j][1]);if(e>s)t+=e-s;if(A[i][1]<B[j][1])i++;else j++;}return t}
 function spans(coder,codeId,docs){const m={};state.quotations.forEach(q=>{if(q.by===coder&&q.codeIds.includes(codeId)&&docs.has(q.docId))(m[q.docId]=m[q.docId]||[]).push([q.start,q.end]);});for(const k in m)m[k]=mergeIv(m[k]);return m}
+/* passages that two or more people coded: where they overlap, and which codes each person used there */
+function computeOverlaps(){
+  const out=[];
+  state.documents.forEach(d=>{
+    const qs=state.quotations.filter(q=>q.docId===d.id&&q.by);if(qs.length<2)return;
+    const L=d.content.length;const pts=new Set();qs.forEach(q=>{pts.add(Math.max(0,Math.min(L,q.start)));pts.add(Math.max(0,Math.min(L,q.end)));});
+    const sorted=[...pts].sort((a,b)=>a-b);let run=null;
+    const flush=()=>{if(!run)return;
+      const quotes=[...run.q].map(id=>qs.find(q=>q.id===id));const byCoder={};
+      quotes.forEach(q=>{(byCoder[q.by]=byCoder[q.by]||new Set());q.codeIds.forEach(c=>byCoder[q.by].add(c));});
+      const sets=Object.values(byCoder);const shared=[...sets[0]].filter(c=>sets.every(st=>st.has(c)));
+      out.push({doc:d,start:run.s,end:run.e,quotes,byCoder,shared});run=null;};
+    for(let i=0;i<sorted.length-1;i++){const s=sorted[i],e=sorted[i+1];if(e<=s)continue;
+      const cover=qs.filter(q=>q.start<=s&&q.end>=e);const coders=new Set(cover.map(q=>q.by));
+      if(coders.size>1){if(run&&run.e===s){run.e=e;cover.forEach(q=>run.q.add(q.id));}else{flush();run={s,e,q:new Set(cover.map(q=>q.id))};}}
+      else flush();}
+    flush();});
+  return out;
+}
+function overlapCard(){
+  const ov=computeOverlaps();
+  if(!ov.length)return `<div class="card"><h3>Overlapping passages</h3><p class="ch-sub" style="margin:0">No passage has been coded by more than one person yet.</p></div>`;
+  const agree=ov.filter(o=>o.shared.length).length;
+  const chip=id=>{const c=codeById(id);return c?`<span class="chip" title="${esc(c.name)}"><span class="dot" style="background:${c.color}"></span>${c.code?`<span class="cid">${esc(c.code)}</span>`:""}${esc(shorten(c.name,24))}</span>`:"";};
+  const rows=ov.slice(0,300).map((o,i)=>{
+    const txt=o.doc.content.slice(o.start,o.end).replace(/\s+/g," ");
+    const who=Object.entries(o.byCoder).map(([u,set])=>`<div class="ov-who">${whoHTML(u)}<span class="q-codes" style="margin:0">${[...set].map(chip).join("")}</span></div>`).join("");
+    return `<div class="ov-row" data-i="${i}" role="button" tabindex="0" title="Open this passage">
+      <div class="ov-top"><span class="ov-doc">${esc(o.doc.name)}</span><span class="ov-tag ${o.shared.length?"ok":"diff"}">${o.shared.length?"Same code":"Different codes"}</span></div>
+      <div class="ov-text">${esc(shorten(txt,160))}</div>${who}</div>`;}).join("");
+  setTimeout(()=>document.querySelectorAll(".ov-row").forEach(el=>{const go=()=>openOverlap(ov[+el.getAttribute("data-i")]);el.onclick=go;el.onkeydown=e=>{if(e.key==="Enter")go();};}),0);
+  return `<div class="card"><h3>Overlapping passages</h3><p class="ch-sub">Text that two or more people coded, with the codes each of them used there. <b>${agree}</b> of <b>${ov.length}</b> share at least one code; the ones marked “Different codes” are good to bring to a calibration meeting. Click one to open it.</p>
+    <div class="ov-list">${rows}</div>${ov.length>300?`<p class="muted" style="font-size:12px;margin:8px 0 0">Showing the first 300.</p>`:""}</div>`;
+}
+function openOverlap(o){
+  ui.mine=false;lsSet(KEY+"_mine","0");ui.coder="all";ui.codeFilter=null;setView("code");ui.currentDoc=o.doc.id;renderAll();
+  const ids=new Set(o.quotes.map(q=>q.id));
+  const m=[...$("viewer").querySelectorAll("mark.hl.shared")].find(x=>x.getAttribute("data-q").split(",").some(id=>ids.has(id)));
+  if(m){m.scrollIntoView({block:"center"});m.classList.remove("flash");void m.offsetWidth;m.classList.add("flash");}
+}
 function agreementCard(coders){
   if(coders.length<2)return `<div class="card"><h3>Coder agreement</h3><p class="ch-sub" style="margin:0">Appears once at least two people have coded the same document.</p></div>`;
   const docsOf=u=>new Set(state.quotations.filter(q=>q.by===u).map(q=>q.docId));

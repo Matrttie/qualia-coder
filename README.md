@@ -29,6 +29,7 @@ Qualia Coder covers that core workflow. Coworkers open one link in a browser, ty
 - **Real-time-ish collaboration.** Every edit syncs to the team within about 4 seconds, and each quotation records who coded it.
 - **Code on your own.** Switch the codebook to **Mine** to hide teammates' codes and highlights while you do your own thematic analysis, or pick one person to see only their codes. Switch back to **All** to compare.
 - **Spot shared passages.** In the Everyone view, text coded by two or more people is hatched with a dashed outline. Click the overlap counter to jump from one to the next.
+- **Overlapping passages.** Analyze lists every passage two or more people coded, with each person's codes there, marked “Same code” or “Different codes”. Click one to open it in the transcript.
 - **Coder comparison.** See code use by coder, and pairwise **inter-coder agreement**: character-overlap per code, ready for a calibration meeting.
 - **Analysis.** Code frequency, a code × document matrix and code co-occurrence.
 - **Export.** Download the whole project as JSON, or the quotations as CSV (with a coder column) for R, SPSS or Excel.
